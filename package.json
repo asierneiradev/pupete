@@ -1,0 +1,40 @@
+{
+  "name": "pupete",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pupete — amigo invisible familiar, reutilizable cada año",
+  "license": "MIT",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:migrate": "prisma migrate deploy",
+    "db:dev": "prisma migrate dev",
+    "e2e": "python3 e2e/flow.py",
+    "admin": "tsx --env-file-if-exists=.env scripts/admin-cli.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.3",
+    "next": "15.5.29",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "server-only": "0.0.1",
+    "web-push": "3.6.7",
+    "zod": "4.1.12"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.1.16",
+    "@types/node": "22.18.13",
+    "@types/react": "19.1.17",
+    "@types/react-dom": "19.1.11",
+    "@types/web-push": "3.6.4",
+    "prisma": "6.19.3",
+    "tailwindcss": "4.1.16",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}

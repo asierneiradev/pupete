@@ -1,0 +1,235 @@
+// Pupete · modelo de datos
+// Un usuario (User) se reutiliza entre ediciones; en cada sala (Game) participa
+// mediante un Participant con su lista de deseos.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum SignupMode {
+  INVITE // cada persona se registra con el enlace de invitación
+  ADMIN_CREATED // el admin crea a todos y reparte códigos
+  BOTH
+}
+
+enum GroupMode {
+  NONE // todos juntos
+  SEPARATE // adultos con adultos, niños con niños
+  KIDS_FROM_ADULTS // adultos entre sí y cada niño recibe de un adulto (los niños no regalan)
+}
+
+enum AgeGroup {
+  ADULT
+  CHILD
+}
+
+enum GameStatus {
+  OPEN
+  DRAWN
+  FINISHED
+}
+
+enum ChatRole {
+  GIVER
+  RECEIVER
+}
+
+model User {
+  id             String    @id @default(cuid())
+  name           String
+  // Nombre normalizado (minúsculas, sin tildes ni signos) con el que se entra
+  // junto con el PIN. Único: no puede haber dos personas que se llamen igual.
+  nameKey        String?   @unique
+  avatar         String    @default("🦊")
+  role           Role      @default(USER)
+  // Código personal de acceso: hash HMAC para buscar + cifrado para que el
+  // propio usuario (y el admin que lo creó) puedan volver a verlo.
+  loginCodeHash  String    @unique
+  loginCodeEnc   String
+  // PIN de 4 dígitos (scrypt con sal + pimienta). Mientras no haya PIN, el
+  // código personal sirve como "código de invitación" para el primer acceso.
+  pinHash        String?
+  pinFailed      Int       @default(0)
+  pinLockedUntil DateTime?
+  // Ficha personal
+  shirtSize      String?
+  pantsSize      String?
+  shoeSize       String?
+  favoriteColors String?
+  likes          String?
+  dislikes       String?
+  allergies      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  sessions     Session[]
+  participants Participant[]
+  ownedGames   Game[]             @relation("GameOwner")
+  pushSubs     PushSubscription[]
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+
+model Game {
+  id               String     @id @default(cuid())
+  name             String
+  description      String?
+  cover            String     @default("bosque")
+  eventDate        DateTime?
+  location         String?
+  status           GameStatus @default(OPEN)
+  signupMode       SignupMode @default(BOTH)
+  groupMode        GroupMode  @default(NONE)
+  budgetMin        Int? // céntimos
+  budgetMax        Int? // céntimos
+  currency         String     @default("EUR")
+  anonChat         Boolean    @default(true)
+  avoidPrevious    Boolean    @default(true)
+  previousGameId   String?
+  previousGame     Game?      @relation("PreviousGame", fields: [previousGameId], references: [id], onDelete: SetNull)
+  nextGames        Game[]     @relation("PreviousGame")
+  wishlistDeadline DateTime?
+  joinToken        String     @unique
+  joinOpen         Boolean    @default(true)
+  drawnAt          DateTime?
+  ownerId          String
+  owner            User       @relation("GameOwner", fields: [ownerId], references: [id])
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  participants Participant[]
+  exclusions   Exclusion[]
+  assignments  Assignment[]
+  messages     ChatMessage[]
+}
+
+model Participant {
+  id                String    @id @default(cuid())
+  gameId            String
+  game              Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group             AgeGroup  @default(ADULT)
+  joinedAt          DateTime  @default(now())
+  revealedAt        DateTime?
+  // "Lo que quieras, sorpréndeme" comprado por quien regala (oculto al dueño)
+  surprisePurchased Boolean   @default(false)
+  // El dueño marca "Lo que quieras, sorpréndeme" como opción de su lista
+  wantsSurprise     Boolean   @default(false)
+
+  wishes      Wish[]
+  givingAs    Assignment[] @relation("Giver")
+  receivingAs Assignment[] @relation("Receiver")
+  exclusionsA Exclusion[]  @relation("ExclA")
+  exclusionsB Exclusion[]  @relation("ExclB")
+
+  @@unique([gameId, userId])
+  @@index([gameId])
+}
+
+model Wish {
+  id            String      @id @default(cuid())
+  participantId String
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  title         String
+  details       String?
+  priority      Int         @default(2) // 1 me encantaría, 2 me gustaría, 3 si acaso
+  priceCents    Int?
+  imageUrl      String?
+  purchased     Boolean     @default(false) // solo lo ve/cambia quien regala
+  position      Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  links WishLink[]
+
+  @@index([participantId])
+}
+
+model WishLink {
+  id        String  @id @default(cuid())
+  wishId    String
+  wish      Wish    @relation(fields: [wishId], references: [id], onDelete: Cascade)
+  url       String
+  title     String?
+  imageUrl  String?
+  siteName  String?
+  priceText String?
+}
+
+model Exclusion {
+  id     String      @id @default(cuid())
+  gameId String
+  game   Game        @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  aId    String
+  a      Participant @relation("ExclA", fields: [aId], references: [id], onDelete: Cascade)
+  bId    String
+  b      Participant @relation("ExclB", fields: [bId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, aId, bId])
+}
+
+model Assignment {
+  id         String      @id @default(cuid())
+  gameId     String
+  game       Game        @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  giverId    String
+  giver      Participant @relation("Giver", fields: [giverId], references: [id], onDelete: Cascade)
+  receiverId String
+  receiver   Participant @relation("Receiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  createdAt  DateTime    @default(now())
+
+  messages ChatMessage[]
+
+  @@unique([gameId, receiverId])
+  @@index([gameId, giverId])
+}
+
+model ChatMessage {
+  id           String     @id @default(cuid())
+  gameId       String
+  game         Game       @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  assignmentId String
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  senderRole   ChatRole
+  body         String
+  createdAt    DateTime   @default(now())
+
+  @@index([assignmentId, createdAt])
+}
+
+// Suscripción Web Push de un navegador/móvil (avisos de mensajes del buzón secreto)
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}

@@ -1,0 +1,58 @@
+# Pupete · amigo invisible — runtime (una sola instancia de app)
+#
+#   docker compose build && docker compose up -d
+#
+# Toda la configuración sale del .env de este directorio (ver .env.example):
+#   POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB  (credenciales de la BD)
+#   APP_URL / APP_SECRET / SETUP_TOKEN / VAPID_*      (app)
+#   APP_PORT / DB_PORT / APP_TIMEZONE                 (puertos en el host y zona horaria)
+name: pupete
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: pupete-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pupete}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?define POSTGRES_PASSWORD en .env}
+      POSTGRES_DB: ${POSTGRES_DB:-pupete}
+      TZ: ${APP_TIMEZONE:-Europe/Madrid}
+    volumes:
+      - ./data/pg:/var/lib/postgresql/data
+    # Solo localhost: lo usan los backups y la CLI de rescate (scripts/admin-cli.ts)
+    ports:
+      - "127.0.0.1:${DB_PORT:-3021}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pupete} -d ${POSTGRES_DB:-pupete}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    security_opt:
+      - no-new-privileges:true
+
+  app:
+    build:
+      context: .
+    image: pupete-app:latest
+    container_name: pupete-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${APP_PORT:-3020}:3000"
+    env_file:
+      - .env
+    environment:
+      # Manda sobre el .env: dentro de Docker la BD es el servicio `db`
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pupete}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-pupete}
+      TZ: ${APP_TIMEZONE:-Europe/Madrid}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Madrid}
+      UPLOAD_DIR: /app/data/uploads
+    volumes:
+      - ./data/uploads:/app/data/uploads
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
