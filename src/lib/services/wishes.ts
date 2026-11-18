@@ -40,7 +40,7 @@ async function participantFor(userId: string, gameId: string) {
   return p;
 }
 
-function clean(input: WishInput) {
+export function cleanWish(input: WishInput) {
   const title = input.title?.trim().replace(/\s+/g, " ");
   if (!title) throw new AppError("Escribe qué te gustaría.");
   if (title.length > 120) throw new AppError("El nombre del regalo es demasiado largo (máx. 120).");
@@ -64,7 +64,7 @@ function clean(input: WishInput) {
   return { title, details, priority, priceCents: input.priceCents ?? null, imageUrl, links: [...new Set(links)] };
 }
 
-async function buildLinks(urls: string[], previous: Array<{ url: string; title: string | null; imageUrl: string | null; siteName: string | null; priceText: string | null }>, preview: PreviewFn) {
+export async function buildWishLinks(urls: string[], previous: Array<{ url: string; title: string | null; imageUrl: string | null; siteName: string | null; priceText: string | null }>, preview: PreviewFn) {
   return Promise.all(
     urls.map(async (url) => {
       const old = previous.find((p) => p.url === url);
@@ -77,11 +77,12 @@ async function buildLinks(urls: string[], previous: Array<{ url: string; title: 
 
 export async function addWish(user: User, gameId: string, input: WishInput, preview: PreviewFn = fetchPreview) {
   const p = await participantFor(user.id, gameId);
-  const data = clean(input);
-  if ((await db.wish.count({ where: { participantId: p.id } })) >= MAX_WISHES) {
+  if (p.game.kind === "GIFT_LIST" && !p.honoree) throw new AppError("En esta sala no tienes lista propia.");
+  const data = cleanWish(input);
+  if ((await db.wish.count({ where: { participantId: p.id, secret: false } })) >= MAX_WISHES) {
     throw new AppError(`Máximo ${MAX_WISHES} ideas por persona.`);
   }
-  const links = await buildLinks(data.links, [], preview);
+  const links = await buildWishLinks(data.links, [], preview);
   const position = (await db.wish.aggregate({ where: { participantId: p.id }, _max: { position: true } }))._max.position ?? 0;
   // Si no se ha puesto foto, usar la de la primera tienda que tenga
   const imageUrl = data.imageUrl ?? links.find((l) => l.imageUrl)?.imageUrl ?? null;
@@ -102,15 +103,16 @@ export async function addWish(user: User, gameId: string, input: WishInput, prev
 
 async function ownWish(user: User, wishId: string) {
   const wish = await db.wish.findUnique({ where: { id: wishId }, include: { participant: { include: { game: true } }, links: true } });
-  if (!wish || wish.participant.userId !== user.id) throw new AppError("Esa idea no es tuya.");
+  // Las ideas secretas (propuestas por otros) no existen para el dueño de la lista
+  if (!wish || wish.secret || wish.participant.userId !== user.id) throw new AppError("Esa idea no es tuya.");
   if (wish.participant.game.status === "FINISHED") throw new AppError("Esta sala ya está cerrada.");
   return wish;
 }
 
 export async function updateWish(user: User, wishId: string, input: WishInput, preview: PreviewFn = fetchPreview) {
   const wish = await ownWish(user, wishId);
-  const data = clean(input);
-  const links = await buildLinks(data.links, wish.links, preview);
+  const data = cleanWish(input);
+  const links = await buildWishLinks(data.links, wish.links, preview);
   const updated = await db.$transaction(async (tx) => {
     await tx.wishLink.deleteMany({ where: { wishId } });
     return tx.wish.update({
@@ -133,7 +135,12 @@ export async function updateWish(user: User, wishId: string, input: WishInput, p
 export async function deleteWish(user: User, wishId: string) {
   const wish = await ownWish(user, wishId);
   // No dejar la lista vacía: o hay alguna idea o "sorpréndeme" está marcado
-  if (!wish.participant.wantsSurprise && (await db.wish.count({ where: { participantId: wish.participantId } })) <= 1) {
+  // (solo amigo invisible: en una lista de regalos puede quedarse vacía)
+  if (
+    wish.participant.game.kind === "SECRET_SANTA" &&
+    !wish.participant.wantsSurprise &&
+    (await db.wish.count({ where: { participantId: wish.participantId, secret: false } })) <= 1
+  ) {
     throw new AppError(EMPTY_LIST_ERROR);
   }
   await db.wish.delete({ where: { id: wishId } });
@@ -143,7 +150,7 @@ export async function deleteWish(user: User, wishId: string) {
 /** El dueño marca o desmarca "Lo que quieras, sorpréndeme" en su lista. */
 export async function setWantsSurprise(user: User, gameId: string, value: boolean) {
   const p = await participantFor(user.id, gameId);
-  if (!value && (await db.wish.count({ where: { participantId: p.id } })) === 0) {
+  if (!value && (await db.wish.count({ where: { participantId: p.id, secret: false } })) === 0) {
     throw new AppError(EMPTY_LIST_ERROR);
   }
   await db.participant.update({ where: { id: p.id }, data: { wantsSurprise: value } });
@@ -153,22 +160,25 @@ export async function setWantsSurprise(user: User, gameId: string, value: boolea
 export async function myListState(user: User, gameId: string) {
   const p = await db.participant.findUnique({
     where: { gameId_userId: { gameId, userId: user.id } },
-    include: { _count: { select: { wishes: true } } },
+    include: { _count: { select: { wishes: { where: { secret: false } } } } },
   });
   if (!p) return null;
   return { wantsSurprise: p.wantsSurprise, wishCount: p._count.wishes, empty: !p.wantsSurprise && p._count.wishes === 0 };
 }
 
-/** Lista propia: sin el campo "purchased" (sorpresa garantizada). */
+/**
+ * Lista propia: sin el campo "purchased" (sorpresa garantizada), sin las ideas
+ * secretas que hayan propuesto otros y sin rastro de quién se ha pedido qué.
+ */
 export async function listMyWishes(user: User, gameId: string) {
   const p = await db.participant.findUnique({ where: { gameId_userId: { gameId, userId: user.id } } });
   if (!p) return [];
   const wishes = await db.wish.findMany({
-    where: { participantId: p.id },
+    where: { participantId: p.id, secret: false },
     include: { links: true },
     orderBy: [{ priority: "asc" }, { position: "asc" }],
   });
-  return wishes.map(({ purchased: _hidden, ...w }) => w);
+  return wishes.map(({ purchased: _hidden, secret: _s, addedById: _a, ...w }) => w);
 }
 
 /** Copia las ideas de otra sala en la que participé (p. ej. el año anterior). */
@@ -177,10 +187,11 @@ export async function copyWishesFrom(user: User, gameId: string, fromGameId: str
   const target = await participantFor(user.id, gameId);
   const source = await db.participant.findUnique({
     where: { gameId_userId: { gameId: fromGameId, userId: user.id } },
-    include: { wishes: { include: { links: true } } },
+    // Nunca las ideas secretas: al copiarlas las vería su dueño
+    include: { wishes: { where: { secret: false }, include: { links: true } } },
   });
   if (!source) throw new AppError("No participaste en esa sala.");
-  const current = await db.wish.count({ where: { participantId: target.id } });
+  const current = await db.wish.count({ where: { participantId: target.id, secret: false } });
   if (source.wantsSurprise && !target.wantsSurprise) {
     await db.participant.update({ where: { id: target.id }, data: { wantsSurprise: true } });
   }

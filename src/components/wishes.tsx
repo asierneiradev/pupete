@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState, useTransition, type ReactNode } from "react";
+import type { ActionResult } from "@/lib/errors";
 import { useRouter } from "next/navigation";
 import { ActionButton, ActionForm, SubmitButton } from "./forms";
 import { deleteWishAction, saveWishAction, setWantsSurpriseAction, togglePurchasedAction, toggleSurpriseAction } from "@/app/actions/wishes";
@@ -67,6 +68,9 @@ export function WishCard({
   gameId,
   giver,
   onEdit,
+  footer,
+  dimmed,
+  badge,
 }: {
   wish: WishView;
   budget: Budget;
@@ -74,6 +78,10 @@ export function WishCard({
   giver?: boolean;
   gameId: string;
   onEdit?: () => void;
+  /** Lista de regalos: controles propios ("yo lo regalo"…) bajo la idea */
+  footer?: ReactNode;
+  dimmed?: boolean;
+  badge?: ReactNode;
 }) {
   const p = PRIORITY[wish.priority] ?? PRIORITY[2];
   const [pending, start] = useTransition();
@@ -81,7 +89,7 @@ export function WishCard({
   const purchased = Boolean(wish.purchased);
   return (
     <article
-      className={`card grid grid-cols-[3.5rem_minmax(0,1fr)] gap-x-3 gap-y-2 p-4 transition-opacity sm:grid-cols-[5rem_minmax(0,1fr)] sm:gap-x-4 ${giver && purchased ? "opacity-70" : ""}`}
+      className={`card grid grid-cols-[3.5rem_minmax(0,1fr)] gap-x-3 gap-y-2 p-4 transition-opacity sm:grid-cols-[5rem_minmax(0,1fr)] sm:gap-x-4 ${(giver && purchased) || dimmed ? "opacity-70" : ""}`}
     >
       {wish.imageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -92,6 +100,7 @@ export function WishCard({
       <div className="flex flex-wrap items-start justify-between gap-2 self-center sm:self-start">
         <h4 className={`font-bold leading-snug ${giver && purchased ? "line-through decoration-2 decoration-moss" : ""}`}>{wish.title}</h4>
         <div className="flex flex-wrap gap-1.5">
+          {badge}
           <span className={`chip ${p.cls}`}>{p.emoji} {p.label}</span>
           <PriceChip cents={wish.priceCents} budget={budget} />
         </div>
@@ -144,6 +153,7 @@ export function WishCard({
             )}
           </div>
         )}
+        {footer && <div className="mt-3">{footer}</div>}
       </div>
     </article>
   );
@@ -239,7 +249,23 @@ export function SurpriseToggle({ gameId, checked, editable }: { gameId: string; 
   );
 }
 
-export function WishForm({ gameId, wish, onDone }: { gameId: string; wish?: WishView; onDone?: () => void }) {
+export function WishForm({
+  gameId,
+  wish,
+  onDone,
+  action,
+  forName,
+  onCancel,
+}: {
+  gameId: string;
+  wish?: WishView;
+  onDone?: () => void;
+  /** Lista de regalos: guardar como idea propuesta para otra persona */
+  action?: (prev: unknown, fd: FormData) => Promise<ActionResult<unknown>>;
+  /** Nombre de esa otra persona (cambia los textos) */
+  forName?: string;
+  onCancel?: () => void;
+}) {
   const [links, setLinks] = useState<string[]>(wish?.links.map((l) => l.url) ?? [""]);
   const [preview, setPreview] = useState<string | null>(wish?.imageUrl ?? null);
   const [removeImage, setRemoveImage] = useState(false);
@@ -247,7 +273,7 @@ export function WishForm({ gameId, wish, onDone }: { gameId: string; wish?: Wish
   return (
     <ActionForm
       key={formKey}
-      action={saveWishAction.bind(null, gameId, wish?.id ?? null)}
+      action={action ?? saveWishAction.bind(null, gameId, wish?.id ?? null)}
       resetOnSuccess={!wish}
       onSuccess={() => {
         if (!wish) {
@@ -259,12 +285,12 @@ export function WishForm({ gameId, wish, onDone }: { gameId: string; wish?: Wish
       className="card flex flex-col gap-4 p-5"
     >
       <label className="field">
-        <span>¿Qué te gustaría?</span>
+        <span>{forName ? `¿Qué le gustaría a ${forName}?` : "¿Qué te gustaría?"}</span>
         <input name="title" required maxLength={120} defaultValue={wish?.title} className="input" placeholder="Ej.: Un libro de setas del bosque" />
       </label>
 
       <fieldset>
-        <legend className="label">¿Cuánta ilusión te haría?</legend>
+        <legend className="label">{forName ? "¿Cuánta ilusión le haría?" : "¿Cuánta ilusión te haría?"}</legend>
         <div className="mt-2 grid grid-cols-1 gap-2 min-[400px]:grid-cols-3">
           {[1, 2, 3].map((n) => (
             <label key={n} className="option p-2.5 text-sm min-[400px]:justify-center min-[400px]:text-center">
@@ -346,10 +372,10 @@ export function WishForm({ gameId, wish, onDone }: { gameId: string; wish?: Wish
       </div>
 
       <div className="flex flex-wrap justify-end gap-2">
-        {wish && (
-          <button type="button" className="btn btn-ghost" onClick={onDone}>Cancelar</button>
+        {(wish || onCancel) && (
+          <button type="button" className="btn btn-ghost" onClick={onCancel ?? onDone}>Cancelar</button>
         )}
-        <SubmitButton pendingText="Guardando…">{wish ? "Guardar cambios" : "Añadir a mi lista"}</SubmitButton>
+        <SubmitButton pendingText="Guardando…">{wish ? "Guardar cambios" : forName ? "Proponer idea 🤫" : "Añadir a mi lista"}</SubmitButton>
       </div>
     </ActionForm>
   );
@@ -361,16 +387,19 @@ export function MyWishList({
   budget,
   editable,
   wantsSurprise,
+  simple = false,
 }: {
   gameId: string;
   wishes: WishView[];
   budget: Budget;
   editable: boolean;
   wantsSurprise: boolean;
+  /** Lista de regalos: sin «sorpréndeme» ni aviso de lista vacía */
+  simple?: boolean;
 }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(wishes.length === 0 && !wantsSurprise);
-  const empty = wishes.length === 0 && !wantsSurprise;
+  const empty = !simple && wishes.length === 0 && !wantsSurprise;
   return (
     <div className="flex flex-col gap-3">
       {empty && (
@@ -382,7 +411,7 @@ export function MyWishList({
           </span>
         </div>
       )}
-      <SurpriseToggle gameId={gameId} checked={wantsSurprise} editable={editable} />
+      {!simple && <SurpriseToggle gameId={gameId} checked={wantsSurprise} editable={editable} />}
       {wishes.map((w) =>
         editing === w.id ? (
           <WishForm key={w.id} gameId={gameId} wish={w} onDone={() => setEditing(null)} />

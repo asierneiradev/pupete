@@ -12,6 +12,8 @@ export interface PushPayload {
   body: string;
   url: string;
   tag?: string;
+  /** Mostrar el aviso aunque la persona tenga esa pantalla abierta (aviso de prueba) */
+  force?: boolean;
 }
 
 export interface PushTarget {
@@ -98,6 +100,9 @@ export async function notifyUser(userId: string, payload: PushPayload): Promise<
           await db.pushSubscription.deleteMany({ where: { id: s.id } });
         } else if (status >= 200 && status < 300) {
           sent++;
+        } else {
+          // Sin esto, un rechazo del servicio push (claves VAPID, cuota…) pasa desapercibido
+          console.error(`[push] aviso rechazado (HTTP ${status}) por ${new URL(s.endpoint).host}`);
         }
       } catch (e) {
         console.error("[push] fallo enviando aviso:", (e as Error).message);
@@ -105,4 +110,25 @@ export async function notifyUser(userId: string, payload: PushPayload): Promise<
     }),
   );
   return sent;
+}
+
+/** Envía el mismo aviso a varias personas. Devuelve a cuántos dispositivos llegó. */
+export async function notifyUsers(userIds: string[], payload: PushPayload): Promise<number> {
+  const counts = await Promise.all([...new Set(userIds)].map((id) => notifyUser(id, payload)));
+  return counts.reduce((a, b) => a + b, 0);
+}
+
+/** Aviso de prueba a los dispositivos de quien lo pide, para comprobar que llegan. */
+export async function sendTestPush(user: User): Promise<{ devices: number; sent: number }> {
+  if (!vapidPublicKey() && sender === realSender) throw new AppError("Los avisos no están configurados en este servidor.");
+  const devices = await db.pushSubscription.count({ where: { userId: user.id } });
+  if (devices === 0) throw new AppError("No tienes los avisos activados en ningún dispositivo.");
+  const sent = await notifyUser(user.id, {
+    title: "🔔 Aviso de prueba",
+    body: "Si lees esto, los avisos de Pupete te llegan bien.",
+    url: "/perfil",
+    tag: "prueba",
+    force: true,
+  });
+  return { devices, sent };
 }

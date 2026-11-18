@@ -9,8 +9,8 @@ import { gameProgress } from "@/lib/services/drawing";
 import { toLocalInput } from "@/lib/dates";
 import { GameForm } from "@/components/GameForm";
 import { ActionForm, SubmitButton } from "@/components/forms";
-import { AddParticipant, DrawPanel, ExclusionsPanel, InvitePanel, ParticipantsTable } from "@/components/admin";
-import { STATUS } from "@/components/GameCard";
+import { AddParticipant, DrawPanel, ExclusionsPanel, GiftClosePanel, InvitePanel, ParticipantsTable } from "@/components/admin";
+import { statusOf } from "@/components/GameCard";
 import { deleteGameAction, nextEditionAction, updateGameAction } from "@/app/actions/games";
 
 export const metadata: Metadata = { title: "Gestionar sala" };
@@ -45,10 +45,16 @@ export default async function AdminSalaPage({ params, searchParams }: { params: 
   const showGroups = game.groupMode !== "NONE";
   const canAdd = game.signupMode !== "INVITE";
   const canInvite = game.signupMode !== "ADMIN_CREATED";
-  const s = STATUS[game.status];
+  const s = statusOf(game);
+  const gift = game.kind === "GIFT_LIST";
   const amIn = participants.some((p) => p.userId === user.id);
 
-  const stats: Array<[string | number, string]> = [
+  const stats: Array<[string | number, string]> = gift
+    ? [
+        [progress.total, "personas"],
+        [progress.honorees, progress.honorees === 1 ? "recibe regalos" : "reciben regalos"],
+      ]
+    : [
     [progress.total, "personas"],
     [`${progress.withWishes}/${progress.total}`, "con lista"],
     ...(showGroups ? ([[progress.kids, "peques"]] as Array<[number, string]>) : []),
@@ -63,11 +69,12 @@ export default async function AdminSalaPage({ params, searchParams }: { params: 
           <h1 className="mt-1 text-3xl sm:text-4xl font-bold leading-tight">{game.name}</h1>
           <div className="mt-2 flex flex-wrap gap-2">
             <span className={`chip ${s.cls}`}>{s.label}</span>
+            {gift && <span className="chip chip-red">🎁 Lista de regalos</span>}
             {game.previousGame && <span className="chip">↺ viene de «{game.previousGame.name}»</span>}
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {amIn && <Link href={`/sala/${id}`} className="btn btn-ghost btn-sm">Ver como participante</Link>}
+          {(amIn || gift) && <Link href={`/sala/${id}`} className="btn btn-ghost btn-sm">{gift ? "Ver las listas" : "Ver como participante"}</Link>}
           {participants.some((p) => p.code) && (
             <Link href={`/sala/${id}/admin/codigos`} className="btn btn-ghost btn-sm">🖨 Tarjetas de invitación</Link>
           )}
@@ -92,7 +99,13 @@ export default async function AdminSalaPage({ params, searchParams }: { params: 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="flex flex-col gap-6">
           <Panel n="01" title="Participantes">
-            <ParticipantsTable gameId={id} participants={participants} open={open} showGroups={showGroups} drawn={!open} />
+            {gift && !game.allHonorees && open && (
+              <p className="notice notice-info mb-3">
+                Marca <b>«Recibe regalos»</b> en la persona (o personas) a quien va dirigida la lista. Ella pondrá sus ideas y no verá quién se pide
+                cada cosa. Si no va a usar la app, podéis proponer vosotros las ideas desde su lista.
+              </p>
+            )}
+            <ParticipantsTable gameId={id} participants={participants} open={open} showGroups={showGroups} drawn={!open && !gift} giftList={gift} allHonorees={game.allHonorees} />
             {open && canAdd && (
               <>
                 <div className="divider-dots my-5" />
@@ -109,12 +122,24 @@ export default async function AdminSalaPage({ params, searchParams }: { params: 
                 joinOpen={game.joinOpen}
                 canJoin={open}
                 gameName={game.name}
+                giftList={gift}
               />
             </Panel>
           )}
         </div>
 
         <div className="flex flex-col gap-6">
+          {gift ? (
+            <Panel n="03" title="Celebración">
+              <GiftClosePanel
+                gameId={id}
+                status={game.status}
+                revealGivers={game.revealGivers}
+                eventPending={Boolean(game.eventDate && game.eventDate.getTime() > Date.now())}
+              />
+            </Panel>
+          ) : (
+          <>
           <Panel n="03" title="Exclusiones" id="exclusiones">
             <ExclusionsPanel
               gameId={id}
@@ -127,11 +152,15 @@ export default async function AdminSalaPage({ params, searchParams }: { params: 
           <Panel n="04" title="Sorteo">
             <DrawPanel gameId={id} status={game.status} total={participants.length} />
           </Panel>
+          </>
+          )}
 
           {game.status !== "OPEN" && (
-            <Panel n="05" title="El año que viene">
+            <Panel n={gift ? "04" : "05"} title="El año que viene">
               <p className="mb-3 text-sm text-ink-soft">
-                Crea una nueva edición con las mismas personas, grupos, exclusiones y reglas. El sorteo evitará repetir parejas de esta.
+                {gift
+                  ? "Crea una nueva edición con las mismas personas y reglas. Quien recibe podrá copiar su lista de esta."
+                  : "Crea una nueva edición con las mismas personas, grupos, exclusiones y reglas. El sorteo evitará repetir parejas de esta."}
               </p>
               <ActionForm action={nextEditionAction.bind(null, id)} className="flex flex-wrap gap-2">
                 <input name="name" className="input flex-1" defaultValue={game.name.replace(/\d{4}/, (y) => String(Number(y) + 1))} aria-label="Nombre de la nueva edición" />
@@ -145,7 +174,7 @@ export default async function AdminSalaPage({ params, searchParams }: { params: 
       <details className="card group p-5 sm:p-6">
         <summary className="flex cursor-pointer list-none items-center justify-between font-bold">
           <span className="flex items-baseline gap-3">
-            <span className="font-dot text-2xl font-bold text-red">06</span> Configuración de la sala
+            <span className="font-dot text-2xl font-bold text-red">{gift ? "05" : "06"}</span> Configuración de la sala
           </span>
           <span className="text-ink-faint transition-transform group-open:rotate-180">⌄</span>
         </summary>

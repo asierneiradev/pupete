@@ -14,6 +14,7 @@ function Landing() {
     ["02", "Cada uno su lista", "Ideas con enlaces de compra, tallas y gustos. Y, si quieres, «sorpréndeme 🥰»."],
     ["03", "Sorteo mágico", "Nadie se toca a sí mismo, ni a su pareja, ni repite el del año pasado."],
     ["04", "Abre tu sobre", "Descubre a quién regalas y pregúntale cosas de forma anónima."],
+    ["05", "Listas de regalos", "Cumpleaños, bodas, Reyes… cada uno se pide qué regala y quien recibe no se entera de nada."],
   ];
   return (
     <div className="pt-6 sm:pt-12">
@@ -31,7 +32,7 @@ function Landing() {
           <Link href="/entrar" className="btn text-base px-7">Entrar</Link>
         </div>
       </section>
-      <section className="mt-16 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="mt-16 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {steps.map(([n, t, d], i) => (
           <div key={n} className={`card-soft p-5 rise rise-${Math.min(i + 1, 4)}`}>
             <span className="font-dot text-3xl font-bold text-red">{n}</span>
@@ -72,7 +73,7 @@ export default async function Home() {
       </section>
 
       <section className="mt-10">
-        <h2 className="dot-label">Mis amigos invisibles</h2>
+        <h2 className="dot-label">Mis salas</h2>
         {participating.length === 0 ? (
           <div className="card-soft mt-4 flex items-center gap-4 p-6">
             <Lantern size={30} />

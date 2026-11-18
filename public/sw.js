@@ -1,4 +1,4 @@
-/* Pupete · service worker: solo avisos push del buzón secreto. */
+/* Pupete · service worker: solo avisos push (buzón secreto y listas de regalos). */
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
@@ -16,7 +16,7 @@ self.addEventListener("push", (event) => {
       // Si ya tienes esa conversación abierta y delante, no hace falta avisar
       const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
       const watching = wins.some((w) => w.focused && w.visibilityState === "visible" && new URL(w.url).pathname === url);
-      if (watching) return;
+      if (watching && !data.force) return;
       await self.registration.showNotification(data.title || "Pupete", {
         body: data.body || "",
         icon: "/icon-192.png",

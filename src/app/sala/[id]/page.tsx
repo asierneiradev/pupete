@@ -19,6 +19,7 @@ import { copyWishesAction } from "@/app/actions/wishes";
 import { leaveGameAction } from "@/app/actions/games";
 import { PushToggle } from "@/components/PushToggle";
 import { vapidPublicKey } from "@/lib/push";
+import { GiftRoom } from "./GiftRoom";
 
 export const metadata: Metadata = { title: "Sala" };
 
@@ -32,7 +33,7 @@ const PROFILE_LABELS: Array<[string, string]> = [
   ["allergies", "⚠️ Alergias"],
 ];
 
-export default async function SalaPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ bienvenida?: string; zona?: string }> }) {
+export default async function SalaPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ bienvenida?: string; zona?: string; de?: string }> }) {
   const { id } = await params;
   const sp = await searchParams;
   const user = await requireUser(`/sala/${id}`);
@@ -44,6 +45,9 @@ export default async function SalaPage({ params, searchParams }: { params: Promi
   const me = game.participants.find((p) => p.userId === user.id);
   const manager = canManage(user, game);
   if (!me && !manager) notFound();
+
+  // Las listas de regalos (sin sorteo) tienen su propia pantalla
+  if (game.kind === "GIFT_LIST") return <GiftRoom game={game} user={user} me={me} manager={manager} sp={sp} />;
 
   const budget: Budget = { min: game.budgetMin, max: game.budgetMax, currency: game.currency };
   const budgetText = budgetLabel(game.budgetMin, game.budgetMax, game.currency);
@@ -76,7 +80,7 @@ export default async function SalaPage({ params, searchParams }: { params: Promi
       {/* Cabecera de la sala */}
       <section className="card overflow-hidden rise">
         <div className="relative h-44 sm:h-56">
-          <Cover cover={game.cover} className="absolute inset-0 h-full w-full" />
+          <Cover cover={game.cover} image={game.coverImage} className="absolute inset-0 h-full w-full" />
           <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-paper-2 to-transparent" />
           <span className={`chip ${status.cls} absolute right-4 top-4`}>{status.label}</span>
         </div>

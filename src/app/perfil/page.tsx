@@ -44,8 +44,8 @@ export default async function PerfilPage({ searchParams }: { searchParams: Promi
       {pushKey && (
         <section className="card mt-6 p-5 sm:p-6 rise rise-2">
           <h2 className="font-bold text-lg">Avisos en el móvil</h2>
-          <p className="hint mt-1 mb-4">Actívalos en cada móvil u ordenador donde quieras enterarte de los mensajes del buzón secreto.</p>
-          <PushToggle publicKey={pushKey} />
+          <p className="hint mt-1 mb-4">Actívalos en cada móvil u ordenador donde quieras enterarte de los mensajes del buzón secreto y de las novedades de las listas de regalos.</p>
+          <PushToggle publicKey={pushKey} hint="Te avisaremos de los mensajes del buzón secreto y de las novedades de las listas de regalos." />
         </section>
       )}
 

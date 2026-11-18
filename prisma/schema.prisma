@@ -40,6 +40,11 @@ enum GameStatus {
   FINISHED
 }
 
+enum GameKind {
+  SECRET_SANTA // amigo invisible con sorteo
+  GIFT_LIST // lista de regalos (cumpleaños, boda, Reyes…): sin sorteo, cada uno se pide qué regala
+}
+
 enum ChatRole {
   GIVER
   RECEIVER
@@ -76,6 +81,7 @@ model User {
   sessions     Session[]
   participants Participant[]
   ownedGames   Game[]             @relation("GameOwner")
+  addedWishes  Wish[]             @relation("WishAddedBy")
   pushSubs     PushSubscription[]
 }
 
@@ -94,9 +100,14 @@ model Session {
 
 model Game {
   id               String     @id @default(cuid())
+  kind             GameKind   @default(SECRET_SANTA)
+  // Solo GIFT_LIST: todo el que entra tiene su propia lista ("todos con todos")
+  allHonorees      Boolean    @default(false)
   name             String
   description      String?
   cover            String     @default("bosque")
+  // Foto propia como portada (subida). Si hay, se pinta en vez de la ilustración
+  coverImage       String?
   eventDate        DateTime?
   location         String?
   status           GameStatus @default(OPEN)
@@ -114,6 +125,10 @@ model Game {
   joinToken        String     @unique
   joinOpen         Boolean    @default(true)
   drawnAt          DateTime?
+  // Solo GIFT_LIST: al cerrar la sala, quien recibe ve quién le regaló cada cosa
+  revealGivers     Boolean    @default(false)
+  // Solo GIFT_LIST: último recordatorio enviado (días que faltaban: 7, 3 o 1)
+  lastReminderDays Int?
   ownerId          String
   owner            User       @relation("GameOwner", fields: [ownerId], references: [id])
   createdAt        DateTime   @default(now())
@@ -138,8 +153,11 @@ model Participant {
   surprisePurchased Boolean   @default(false)
   // El dueño marca "Lo que quieras, sorpréndeme" como opción de su lista
   wantsSurprise     Boolean   @default(false)
+  // Solo GIFT_LIST: esta persona recibe regalos (tiene lista que los demás ven)
+  honoree           Boolean   @default(false)
 
   wishes      Wish[]
+  claims      WishClaim[]
   givingAs    Assignment[] @relation("Giver")
   receivingAs Assignment[] @relation("Receiver")
   exclusionsA Exclusion[]  @relation("ExclA")
@@ -160,11 +178,35 @@ model Wish {
   imageUrl      String?
   purchased     Boolean     @default(false) // solo lo ve/cambia quien regala
   position      Int         @default(0)
+  // Solo GIFT_LIST: idea que ha propuesto otra persona. El dueño de la lista
+  // NUNCA la ve. La visibilidad depende de `secret`, no de `addedById` (que
+  // puede quedar a null si se borra la cuenta de quien la propuso).
+  secret        Boolean     @default(false)
+  addedById     String?
+  addedBy       User?       @relation("WishAddedBy", fields: [addedById], references: [id], onDelete: SetNull)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
-  links WishLink[]
+  links  WishLink[]
+  claims WishClaim[]
 
+  @@index([participantId])
+}
+
+// Solo GIFT_LIST: "yo lo regalo". El dueño de la lista nunca ve esto.
+// Un regalo tiene o un único claim individual o varios con joint=true (entre varios).
+model WishClaim {
+  id            String      @id @default(cuid())
+  wishId        String
+  wish          Wish        @relation(fields: [wishId], references: [id], onDelete: Cascade)
+  participantId String
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  joint         Boolean     @default(false)
+  // Bote común (solo entre varios): cuánto pone esta persona, en céntimos
+  amountCents   Int?
+  createdAt     DateTime    @default(now())
+
+  @@unique([wishId, participantId])
   @@index([participantId])
 }
 

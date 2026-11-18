@@ -10,6 +10,7 @@ import { deleteUnusedUploads } from "../uploads";
 const MAX_PARTICIPANTS = 150;
 
 function assertOpen(game: Game) {
+  if (game.kind === "GIFT_LIST" && game.status !== "OPEN") throw new AppError("Esta sala ya está cerrada.");
   if (game.status !== "OPEN") throw new AppError("El sorteo ya se ha hecho: no se pueden cambiar participantes. Deshaz el sorteo si hace falta.");
 }
 
@@ -60,7 +61,7 @@ export async function addParticipantByAdmin(
   if (await db.participant.findUnique({ where: { gameId_userId: { gameId: game.id, userId } } })) {
     throw new AppError("Esa persona ya está en la sala.");
   }
-  const p = await db.participant.create({ data: { gameId: game.id, userId, group } });
+  const p = await db.participant.create({ data: { gameId: game.id, userId, group, honoree: game.allHonorees } });
   return { participantId: p.id, userId, code };
 }
 
@@ -90,7 +91,7 @@ export async function joinGame(user: User, token: string, group?: AgeGroup) {
   assertJoinable(game);
   await assertCapacity(game.id);
   const participant = await db.participant.create({
-    data: { gameId: game.id, userId: user.id, group: group === "CHILD" ? "CHILD" : "ADULT" },
+    data: { gameId: game.id, userId: user.id, group: group === "CHILD" ? "CHILD" : "ADULT", honoree: game.allHonorees },
   });
   return { game, participant, already: false };
 }
@@ -113,7 +114,7 @@ export async function registerAndJoin(
   const pin = validatePin(input.pin, input.repeat);
   const { user, code } = await createUser({ name: input.name, pin });
   const participant = await db.participant.create({
-    data: { gameId: game.id, userId: user.id, group: input.group === "CHILD" ? "CHILD" : "ADULT" },
+    data: { gameId: game.id, userId: user.id, group: input.group === "CHILD" ? "CHILD" : "ADULT", honoree: game.allHonorees },
   });
   return { game, user, code, participant };
 }
@@ -146,12 +147,35 @@ export async function setParticipantGroup(actor: User, gameId: string, participa
   await db.participant.update({ where: { id: p.id }, data: { group: group === "CHILD" ? "CHILD" : "ADULT" } });
 }
 
+/** Lista de regalos: marcar o desmarcar a quién se le regala. */
+export async function setHonoree(actor: User, gameId: string, participantId: string, value: boolean) {
+  const game = await getManagedGame(actor, gameId);
+  if (game.kind !== "GIFT_LIST") throw new AppError("Esto solo existe en las salas de lista de regalos.");
+  if (game.status === "FINISHED") throw new AppError("Esta sala ya está cerrada.");
+  if (game.allHonorees && !value) throw new AppError("En esta sala todo el mundo tiene lista. Cámbialo en la configuración.");
+  const p = await db.participant.findUnique({ where: { id: participantId } });
+  if (!p || p.gameId !== game.id) throw new AppError("Ese participante no está en la sala.");
+  await db.$transaction(async (tx) => {
+    await tx.participant.update({ where: { id: p.id }, data: { honoree: value } });
+    // Quien pasa a recibir deja de tener regalos "pedidos" para sí mismo (no puede haberlos)
+    // y, si deja de recibir, se sueltan los que otros se habían pedido de su lista.
+    if (!value) {
+      await tx.wishClaim.deleteMany({ where: { wish: { participantId: p.id } } });
+      await tx.wish.updateMany({ where: { participantId: p.id }, data: { purchased: false } });
+    }
+  });
+}
+
 /** Lista para el panel del admin, con códigos visibles (salvo de otros admins). */
 export async function listParticipantsForAdmin(actor: User, gameId: string) {
   const game = await getManagedGame(actor, gameId);
   const rows = await db.participant.findMany({
     where: { gameId: game.id },
-    include: { user: true, _count: { select: { wishes: true, givingAs: true } } },
+    // Las ideas secretas no cuentan: quien organiza puede ser quien recibe
+    include: {
+      user: { include: { _count: { select: { pushSubs: true } } } },
+      _count: { select: { wishes: { where: { secret: false } }, givingAs: true } },
+    },
     orderBy: { joinedAt: "asc" },
   });
   return rows.map((p) => ({
@@ -160,11 +184,14 @@ export async function listParticipantsForAdmin(actor: User, gameId: string) {
     name: p.user.name,
     avatar: p.user.avatar,
     group: p.group,
+    honoree: p.honoree,
     wishCount: p._count.wishes,
     wantsSurprise: p.wantsSurprise,
     emptyList: !p.wantsSurprise && p._count.wishes === 0,
     revealed: Boolean(p.revealedAt),
     hasPin: Boolean(p.user.pinHash),
+    /** Tiene los avisos activados en algún dispositivo */
+    pushOn: p.user._count.pushSubs > 0,
     // El código de invitación solo se muestra mientras no haya creado su PIN
     code: p.user.pinHash || (p.user.role === "ADMIN" && p.user.id !== actor.id) ? null : revealLoginCode(p.user),
   }));

@@ -55,8 +55,8 @@ export function uploadName(url: string | null | undefined): string | null {
 }
 
 /**
- * Borra del disco las fotos subidas que ya no use ninguna idea (una foto puede
- * estar en varias ediciones si se copió la lista). Llamar DESPUÉS de borrar en BD.
+ * Borra del disco las fotos subidas que ya no use ninguna idea ni ninguna
+ * portada de sala (una foto puede estar en varias ediciones). Llamar DESPUÉS de borrar en BD.
  * Devuelve cuántos ficheros se borraron. Nunca lanza.
  */
 export async function deleteUnusedUploads(urls: Array<string | null | undefined>): Promise<number> {
@@ -64,7 +64,7 @@ export async function deleteUnusedUploads(urls: Array<string | null | undefined>
   let removed = 0;
   for (const name of names) {
     const url = UPLOAD_PREFIX + name;
-    const inUse = await db.wish.count({ where: { imageUrl: url } });
+    const inUse = (await db.wish.count({ where: { imageUrl: url } })) + (await db.game.count({ where: { coverImage: url } }));
     if (inUse) continue;
     try {
       await unlink(path.join(uploadDir(), name));

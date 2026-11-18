@@ -10,7 +10,7 @@ const { resetRateLimits } = await import("@/lib/rate-limit");
 
 beforeEach(async () => {
   await db.$executeRawUnsafe(
-    `TRUNCATE "PushSubscription","ChatMessage","Assignment","Exclusion","WishLink","Wish","Participant","Game","Session","User" RESTART IDENTITY CASCADE`,
+    `TRUNCATE "PushSubscription","ChatMessage","Assignment","Exclusion","WishClaim","WishLink","Wish","Participant","Game","Session","User" RESTART IDENTITY CASCADE`,
   );
   resetRateLimits();
 });

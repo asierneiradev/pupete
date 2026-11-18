@@ -7,7 +7,8 @@ import { GroupPicker } from "./GroupPicker";
 import type { ActionResult } from "@/lib/errors";
 import {
   addExclusionAction, addParticipantAction, checkDrawAction, drawAction, finishGameAction, removeExclusionAction,
-  removeParticipantAction, resetDrawAction, rotateJoinTokenAction, setGroupAction, setJoinOpenAction,
+  removeParticipantAction, resetDrawAction, rotateJoinTokenAction, setGroupAction, setHonoreeAction, setJoinOpenAction,
+  setRevealGiversAction,
 } from "@/app/actions/games";
 
 export interface AdminParticipant {
@@ -16,10 +17,13 @@ export interface AdminParticipant {
   name: string;
   avatar: string;
   group: "ADULT" | "CHILD";
+  /** Solo lista de regalos: recibe regalos */
+  honoree: boolean;
   wishCount: number;
   emptyList: boolean;
   revealed: boolean;
   hasPin: boolean;
+  pushOn: boolean;
   /** Código de invitación: solo mientras no haya creado su PIN. */
   code: string | null;
 }
@@ -30,12 +34,17 @@ export function ParticipantsTable({
   open,
   showGroups,
   drawn,
+  giftList = false,
+  allHonorees = false,
 }: {
   gameId: string;
   participants: AdminParticipant[];
   open: boolean;
   showGroups: boolean;
   drawn: boolean;
+  /** Sala de lista de regalos: sin sorteo, con interruptor "recibe regalos" */
+  giftList?: boolean;
+  allHonorees?: boolean;
 }) {
   const [pending, start] = useTransition();
   const router = useRouter();
@@ -62,15 +71,41 @@ export function ParticipantsTable({
             <div className="min-w-[9.5rem] flex-1">
               <p className="font-semibold leading-tight">{p.name}</p>
               <p className="text-xs text-ink-faint">
-                {p.wishCount} idea{p.wishCount === 1 ? "" : "s"}
-                {drawn && (p.revealed ? " · ✉️ sobre abierto" : " · ✉️ sin abrir")}
+                {giftList ? (
+                  p.honoree ? `${p.wishCount} idea${p.wishCount === 1 ? "" : "s"} en su lista` : "Regala"
+                ) : (
+                  <>
+                    {p.wishCount} idea{p.wishCount === 1 ? "" : "s"}
+                    {drawn && (p.revealed ? " · ✉️ sobre abierto" : " · ✉️ sin abrir")}
+                  </>
+                )}
               </p>
               <div className="mt-1 flex flex-wrap gap-1.5">
+                {giftList && p.honoree && <span className="chip chip-red">🎁 Recibe regalos</span>}
                 {p.hasPin ? <span className="chip chip-moss">🔐 PIN creado</span> : <span className="chip chip-sky">⏳ Sin PIN</span>}
-                {p.emptyList && <span className="chip chip-red">⚠️ Lista vacía</span>}
+                {p.pushOn ? <span className="chip" title="Tiene los avisos activados en algún dispositivo">🔔 Avisos</span> : <span className="chip text-ink-faint" title="No ha activado los avisos">🔕 Sin avisos</span>}
+                {!giftList && p.emptyList && <span className="chip chip-red">⚠️ Lista vacía</span>}
               </div>
             </div>
             <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            {giftList && open && !allHonorees && (
+              <label className="switch text-sm font-semibold">
+                <input
+                  type="checkbox"
+                  checked={p.honoree}
+                  disabled={pending}
+                  onChange={(e) => {
+                    const v = e.target.checked;
+                    if (!v && p.wishCount > 0 && !window.confirm(`${p.name} dejará de tener lista visible y se soltarán los regalos que ya se hayan pedido. ¿Seguro?`)) return;
+                    start(async () => {
+                      setError(await setHonoreeAction(gameId, p.id, v));
+                      router.refresh();
+                    });
+                  }}
+                />
+                Recibe regalos
+              </label>
+            )}
             {showGroups &&
               (open ? (
                 <select
@@ -188,12 +223,14 @@ export function InvitePanel({
   joinOpen,
   canJoin,
   gameName,
+  giftList = false,
 }: {
   gameId: string;
   url: string;
   joinOpen: boolean;
   canJoin: boolean;
   gameName: string;
+  giftList?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-4">
@@ -202,7 +239,7 @@ export function InvitePanel({
         <div className="flex flex-wrap items-center gap-2">
           <code className="min-w-0 basis-full truncate rounded-xl sm:basis-0 sm:flex-1 border border-line bg-paper px-3 py-2 font-mono text-sm">{url}</code>
           <CopyButton text={url} />
-          <ShareButton text={`¡Te invito al amigo invisible «${gameName}»! 🎁`} url={url} />
+          <ShareButton text={giftList ? `¡Te invito a la lista de regalos «${gameName}»! 🎁` : `¡Te invito al amigo invisible «${gameName}»! 🎁`} url={url} />
         </div>
       </div>
       {canJoin && (
@@ -345,6 +382,75 @@ export function DrawPanel({ gameId, status, total }: { gameId: string; status: "
         </div>
       )}
       <Notice result={result} />
+    </div>
+  );
+}
+
+/** Lista de regalos: no hay sorteo, solo cerrar la sala cuando pase la fecha. */
+export function GiftClosePanel({
+  gameId,
+  status,
+  revealGivers,
+  eventPending,
+}: {
+  gameId: string;
+  status: "OPEN" | "DRAWN" | "FINISHED";
+  /** Agradecimientos activados: quien recibe ve quién le regaló cada cosa */
+  revealGivers: boolean;
+  /** La fecha de la celebración aún no ha llegado */
+  eventPending: boolean;
+}) {
+  const [reveal, setReveal] = useState(true);
+  if (status === "FINISHED") {
+    return (
+      <div className="flex flex-col gap-3">
+        <p className="text-ink-soft">Esta sala está cerrada: las listas ya no se pueden cambiar.</p>
+        <p className={`notice ${revealGivers ? "notice-ok" : "notice-info"}`}>
+          {revealGivers ? (
+            <>
+              <b>💌 Agradecimientos activados.</b>{" "}
+              {eventPending
+                ? "Cuando llegue la fecha de la celebración, quien recibe verá quién le regaló cada cosa."
+                : "Quien recibe ya puede ver quién le regaló cada cosa."}
+            </>
+          ) : (
+            <>Quien recibe <b>no</b> ve quién le regaló cada cosa.</>
+          )}
+        </p>
+        <div>
+          <ActionButton
+            action={() => setRevealGiversAction(gameId, !revealGivers)}
+            confirm={revealGivers ? "¿Volver a ocultar quién regaló cada cosa?" : "¿Enseñar a quien recibe quién le regaló cada cosa?"}
+          >
+            {revealGivers ? "Ocultarlo otra vez" : "💌 Enseñar quién regaló cada cosa"}
+          </ActionButton>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-ink-soft">
+        Aquí no hay sorteo: cada persona entra, ve la lista y se pide lo que va a regalar. Cuando pase la celebración puedes cerrar la sala.
+      </p>
+      <label className="option">
+        <input type="checkbox" checked={reveal} onChange={(e) => setReveal(e.target.checked)} />
+        <span>
+          <b>💌 Al cerrar, enseñar quién regaló cada cosa</b>
+          <span className="block text-sm text-ink-soft">
+            Quien recibe verá quién le regaló qué para poder dar las gracias. Nunca se enseña antes de la fecha de la celebración ni cuánto puso cada uno.
+          </span>
+        </span>
+      </label>
+      <div>
+        <ActionButton
+          action={() => finishGameAction(gameId, reveal)}
+          confirm={`¿Cerrar la sala? Las listas y los regalos pedidos ya no se podrán cambiar.${reveal ? " Quien recibe verá quién le regaló cada cosa." : ""}`}
+          className="btn btn-ghost"
+        >
+          🎉 Ya lo hemos celebrado
+        </ActionButton>
+      </div>
     </div>
   );
 }

@@ -32,6 +32,7 @@ export type DrawCheck = { ok: true; warnings: string[] } | { ok: false; error: s
 /** Simula el sorteo sin guardar nada para avisar de problemas. */
 export async function checkDraw(actor: User, gameId: string): Promise<DrawCheck> {
   const game = await getManagedGame(actor, gameId);
+  if (game.kind !== "SECRET_SANTA") return { ok: false, error: "Esta sala es una lista de regalos: no hay sorteo." };
   try {
     const r = runDraw(await buildInput(game.id));
     const empty = await db.participant.findMany({
@@ -51,6 +52,7 @@ export async function checkDraw(actor: User, gameId: string): Promise<DrawCheck>
 
 export async function performDraw(actor: User, gameId: string): Promise<DrawResult> {
   const game = await getManagedGame(actor, gameId);
+  if (game.kind !== "SECRET_SANTA") throw new AppError("Esta sala es una lista de regalos: no hay sorteo.");
   if (game.status !== "OPEN") throw new AppError("El sorteo ya está hecho.");
   const input = await buildInput(game.id);
   let result: DrawResult;
@@ -149,12 +151,13 @@ export async function markRevealed(user: User, gameId: string): Promise<void> {
 export async function gameProgress(gameId: string) {
   const ps = await db.participant.findMany({
     where: { gameId },
-    select: { revealedAt: true, group: true, _count: { select: { wishes: true } } },
+    select: { revealedAt: true, group: true, honoree: true, _count: { select: { wishes: { where: { secret: false } } } } },
   });
   return {
     total: ps.length,
     adults: ps.filter((p) => p.group === "ADULT").length,
     kids: ps.filter((p) => p.group === "CHILD").length,
+    honorees: ps.filter((p) => p.honoree).length,
     withWishes: ps.filter((p) => p._count.wishes > 0).length,
     revealed: ps.filter((p) => p.revealedAt).length,
   };

@@ -164,7 +164,7 @@ describe("después del sorteo: mi asignación", () => {
     await performDraw(admin, game.id);
     await markRevealed(u, game.id);
     await markRevealed(u, game.id);
-    expect(await gameProgress(game.id)).toEqual({ total: 6, adults: 5, kids: 1, withWishes: 1, revealed: 1 });
+    expect(await gameProgress(game.id)).toEqual({ honorees: 0, total: 6, adults: 5, kids: 1, withWishes: 1, revealed: 1 });
   });
 });
 

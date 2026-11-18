@@ -2,26 +2,41 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import type { AgeGroup, GroupMode, SignupMode } from "@prisma/client";
+import type { AgeGroup, GameKind, GroupMode, SignupMode } from "@prisma/client";
 import { runAction, type ActionResult } from "@/lib/errors";
 import { parseEuros } from "@/lib/money";
 import { parseLocalDateTime } from "@/lib/dates";
 import { requireUser } from "@/lib/session";
+import { after } from "next/server";
+import { saveUpload } from "@/lib/uploads";
 import {
-  createGame, createNextEdition, deleteGame, finishGame, rotateJoinToken, setJoinOpen, updateGame,
+  createGame, createNextEdition, deleteGame, finishGame, rotateJoinToken, setJoinOpen, setRevealGivers, updateGame,
   type GameInput,
 } from "@/lib/services/games";
+import { notifyThanksReady } from "@/lib/services/giftnotify";
 import {
   addExclusion, addParticipantByAdmin, joinGame, leaveGame, registerAndJoin, removeExclusion,
-  removeParticipant, setParticipantGroup,
+  removeParticipant, setHonoree, setParticipantGroup,
 } from "@/lib/services/participants";
 import { checkDraw, performDraw, resetDraw, type DrawCheck } from "@/lib/services/drawing";
 import { startSession } from "@/lib/session";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "");
 
-function parseGameForm(fd: FormData): GameInput {
+/** Foto de portada: `undefined` = no tocar, `null` = quitarla, texto = la nueva. */
+async function parseCoverImage(fd: FormData): Promise<string | null | undefined> {
+  const file = fd.get("coverPhoto");
+  if (file && typeof file === "object" && "arrayBuffer" in file && file.size > 0) {
+    return saveUpload(Buffer.from(await file.arrayBuffer()));
+  }
+  return fd.get("removeCoverPhoto") === "on" ? null : undefined;
+}
+
+async function parseGameForm(fd: FormData): Promise<GameInput> {
   return {
+    coverImage: await parseCoverImage(fd),
+    kind: (s(fd, "kind") === "GIFT_LIST" ? "GIFT_LIST" : "SECRET_SANTA") as GameKind,
+    allHonorees: s(fd, "giftFor") === "all",
     name: s(fd, "name"),
     description: s(fd, "description"),
     cover: s(fd, "cover"),
@@ -44,11 +59,12 @@ function touch(gameId: string) {
 
 export async function createGameAction(_: unknown, fd: FormData): Promise<ActionResult> {
   const user = await requireUser();
-  const r = await runAction(() =>
+  const r = await runAction(async () =>
     createGame(user, {
-      ...parseGameForm(fd),
+      ...(await parseGameForm(fd)),
       joinAsParticipant: fd.get("joinAsParticipant") === "on",
       ownerGroup: s(fd, "ownerGroup") === "CHILD" ? "CHILD" : "ADULT",
+      ownerIsHonoree: fd.get("ownerIsHonoree") === "on",
     }),
   );
   if (!r.ok) return r;
@@ -57,7 +73,7 @@ export async function createGameAction(_: unknown, fd: FormData): Promise<Action
 
 export async function updateGameAction(gameId: string, _: unknown, fd: FormData): Promise<ActionResult> {
   const user = await requireUser();
-  const r = await runAction(() => updateGame(user, gameId, parseGameForm(fd)), "Configuración guardada");
+  const r = await runAction(async () => updateGame(user, gameId, await parseGameForm(fd)), "Configuración guardada");
   touch(gameId);
   return r.ok ? { ok: true, message: r.message } : r;
 }
@@ -76,11 +92,22 @@ export async function rotateJoinTokenAction(gameId: string): Promise<ActionResul
   return r.ok ? { ok: true, message: r.message } : r;
 }
 
-export async function finishGameAction(gameId: string): Promise<ActionResult> {
+export async function finishGameAction(gameId: string, revealGivers = false): Promise<ActionResult> {
   const user = await requireUser();
-  const r = await runAction(() => finishGame(user, gameId), "Sala cerrada. ¡Felices fiestas!");
+  const r = await runAction(() => finishGame(user, gameId, { revealGivers: revealGivers === true }));
   touch(gameId);
-  return r.ok ? { ok: true, message: r.message } : r;
+  if (!r.ok) return r;
+  if (r.data!.revealGivers) after(() => notifyThanksReady(gameId).catch((e) => console.error("[push]", e)));
+  return { ok: true, message: r.data!.kind === "GIFT_LIST" ? "Sala cerrada. ¡Que disfrutéis los regalos! 🎉" : "Sala cerrada. ¡Felices fiestas!" };
+}
+
+export async function setRevealGiversAction(gameId: string, value: boolean): Promise<ActionResult> {
+  const user = await requireUser();
+  const r = await runAction(() => setRevealGivers(user, gameId, value === true));
+  touch(gameId);
+  if (!r.ok) return r;
+  if (r.data!.revealGivers) after(() => notifyThanksReady(gameId).catch((e) => console.error("[push]", e)));
+  return { ok: true };
 }
 
 export async function deleteGameAction(gameId: string, _: unknown, fd: FormData): Promise<ActionResult> {
@@ -149,6 +176,13 @@ export async function removeParticipantAction(gameId: string, participantId: str
 export async function setGroupAction(gameId: string, participantId: string, group: AgeGroup): Promise<ActionResult> {
   const user = await requireUser();
   const r = await runAction(() => setParticipantGroup(user, gameId, participantId, group));
+  touch(gameId);
+  return r.ok ? { ok: true } : r;
+}
+
+export async function setHonoreeAction(gameId: string, participantId: string, value: boolean): Promise<ActionResult> {
+  const user = await requireUser();
+  const r = await runAction(() => setHonoree(user, gameId, participantId, value));
   touch(gameId);
   return r.ok ? { ok: true } : r;
 }

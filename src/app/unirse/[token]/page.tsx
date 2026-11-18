@@ -42,7 +42,8 @@ export default async function UnirsePage({ params }: { params: Promise<{ token: 
     <div className="mx-auto max-w-lg pt-2">
       <div className="card overflow-hidden rise">
         <div className="relative h-40">
-          <Cover cover={game.cover} className="absolute inset-0 h-full w-full" />
+          {/* Las fotos subidas solo se sirven con sesión: sin ella, la ilustración */}
+          <Cover cover={game.cover} image={user ? game.coverImage : null} className="absolute inset-0 h-full w-full" />
         </div>
         <div className="p-6 sm:p-8">
           <p className="dot-label">{game.owner.name} te invita</p>
@@ -62,7 +63,7 @@ export default async function UnirsePage({ params }: { params: Promise<{ token: 
               {game.signupMode === "ADMIN_CREATED"
                 ? "En esta sala el organizador da de alta a cada persona. Pídele tu código de invitación y entra con él."
                 : game.status !== "OPEN"
-                  ? "El sorteo ya se ha hecho: la inscripción está cerrada."
+                  ? game.kind === "GIFT_LIST" ? "Esta sala ya está cerrada." : "El sorteo ya se ha hecho: la inscripción está cerrada."
                   : "La inscripción está cerrada ahora mismo. Pide al organizador que la abra."}
             </p>
           ) : user ? (
