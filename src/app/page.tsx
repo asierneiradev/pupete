@@ -69,7 +69,7 @@ export default async function Home() {
           </h1>
         </div>
         {organizer && (
-          <Link href="/admin/nueva" className="btn">+ Nueva sala</Link>
+          <Link href="/admin/nueva" className="btn sm:hidden">+ Nueva sala</Link>
         )}
       </section>
 

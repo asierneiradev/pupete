@@ -434,21 +434,75 @@ body::before {
 .scenery { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
 .scenery .sky { position: absolute; inset: 0; background: linear-gradient(180deg, var(--sky-top) 0%, var(--sky-bottom) 62%); }
 .scenery svg { position: absolute; }
-.scenery .hills { left: 0; bottom: 0; width: 100%; height: 38vh; min-height: 220px; }
+.scenery .hills { position: absolute; left: 0; bottom: 0; width: 100%; height: 38vh; min-height: 220px; }
+.scenery .hills > svg { inset: 0; width: 100%; height: 100%; }
 /* En el móvil las colinas, más bajas: si no, el texto suelto queda encima del verde */
 @media (max-width: 640px) {
   .scenery .hills { height: 18vh; min-height: 110px; }
 }
 
+/* Todo el fondo se anima solo con transform y opacity: fluido también en el móvil */
+
+/* Luz del cielo: un velo cálido que aparece y se va */
+.scenery .sky-warm {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, #f3c9a8 0%, #f9dfc0 38%, transparent 72%);
+  opacity: 0;
+  animation: sky-warm 36s ease-in-out infinite alternate;
+}
+@keyframes sky-warm {
+  0%, 15% { opacity: 0; }
+  85%, 100% { opacity: 0.6; }
+}
+
+/* Sol */
+.scenery .sun { position: absolute; right: 7%; top: 7%; width: 150px; height: 150px; animation: sun-bob 14s ease-in-out infinite alternate; }
+.scenery .sun svg { inset: 0; }
+.scenery .sun-halo { animation: sun-breathe 5s ease-in-out infinite alternate; }
+.scenery .sun-rays { animation: sun-spin 50s linear infinite; }
+@keyframes sun-bob { from { transform: translateY(0); } to { transform: translateY(14px); } }
+@keyframes sun-breathe { from { transform: scale(0.9); opacity: 0.7; } to { transform: scale(1.22); opacity: 1; } }
+@keyframes sun-spin { to { transform: rotate(360deg); } }
+@media (max-width: 640px) {
+  .scenery .sun { right: 2%; top: 9%; scale: 0.72; }
+}
+
+/* Nubes: cruzan de lado a lado (entran y salen enteras) mientras suben y bajan un poco */
 @keyframes drift {
-  from { transform: translateX(-30vw); }
-  to { transform: translateX(130vw); }
+  from { transform: translateX(-280px); }
+  to { transform: translateX(100vw); }
 }
 .cloud { animation: drift linear infinite; will-change: transform; }
+.cloud-bob { transform-origin: left top; animation: cloud-bob ease-in-out infinite alternate; }
+@keyframes cloud-bob { from { translate: 0 -7px; } to { translate: 0 9px; } }
+
+/* Pájaros: la bandada cruza en el primer tercio del ciclo y luego espera fuera */
+.scenery .flock { position: absolute; left: 0; width: 80px; height: 30px; animation: flock linear infinite; will-change: transform; }
+@keyframes flock {
+  0% { transform: translate(-90px, 0); }
+  36% { transform: translate(calc(100vw + 20px), -9vh); }
+  100% { transform: translate(calc(100vw + 20px), -9vh); }
+}
+.scenery .bird { transform-origin: center bottom; animation: flap ease-in-out infinite alternate; }
+@keyframes flap { from { transform: scaleY(1); } to { transform: scaleY(0.35); } }
+
+/* Farol de la casita (su ventana está en x=980/1440, y≈281/400 del dibujo) */
+.scenery .lantern {
+  position: absolute; left: 68.05%; bottom: 29.75%; width: 10px; height: 10px; margin: -5px;
+  border-radius: 50%; background: var(--glow);
+  box-shadow: 0 0 14px 7px color-mix(in oklab, var(--glow) 75%, transparent);
+  animation: lantern 3.4s ease-in-out infinite;
+}
+@keyframes lantern {
+  0%, 100% { opacity: 0.55; transform: scale(0.85); }
+  40% { opacity: 1; transform: scale(1.25); }
+  55% { opacity: 0.7; transform: scale(1); }
+  70% { opacity: 1; transform: scale(1.15); }
+}
 
 @keyframes float {
   0%, 100% { transform: translate(0, 0); opacity: 0.2; }
-  50% { transform: translate(8px, -22px); opacity: 1; }
+  50% { transform: translate(10px, -30px); opacity: 1; }
 }
 .mote { animation: float ease-in-out infinite; }
 
@@ -568,7 +622,8 @@ body::before {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
-  .cloud, .mote { animation: none !important; }
+  .cloud, .cloud-bob, .mote, .scenery .sky-warm, .scenery .sun, .scenery .sun-halo, .scenery .sun-rays, .scenery .bird, .scenery .lantern { animation: none !important; }
+  .scenery .flock { display: none; }
 }
 
 /* Impresión de tarjetas de códigos */
