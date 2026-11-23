@@ -7,7 +7,8 @@ Diseño de cuento en acuarela (ilustraciones SVG originales) con tipografía de 
 ## Qué hace
 
 - **Primer arranque** en `/setup`: crea la primera cuenta de administración.
-- **Salas** (las crea un admin) con estas opciones:
+- **Tres niveles**: *participante* (entra en las salas a las que le invitan), *organizador* (además crea sus propias salas) y *admin* (organizador que además reparte estos permisos). **Cada sala la lleva solo quien la creó**: ni otro organizador ni un admin ven o gestionan las salas de otro, ni a la gente que entra en ellas.
+- **Salas** (las crea un organizador o un admin) con estas opciones:
   - Fecha, lugar, portada y mensaje para la familia.
   - Modo de alta: **invitación** (enlace por WhatsApp), **lo hace el admin** (da de alta a cada persona y reparte su código de invitación) o **ambos**.
   - Grupos: todos juntos · **adultos y peques por separado** · **los mayores regalan a los peques** (los peques no regalan).
@@ -15,7 +16,8 @@ Diseño de cuento en acuarela (ilustraciones SVG originales) con tipografía de 
   - **Buzón secreto** (chat anónimo) y **no repetir la pareja del año pasado**.
   - Fecha límite para completar la lista.
 - **Acceso con nombre + PIN de 4 números** (sin email: pensado para gente mayor). Al entrar no importan mayúsculas, tildes ni signos («inaki» = «Iñaki»). Los nombres son únicos: si dos personas se llaman igual, una añade apellido o inicial. La primera vez se entra con el enlace de invitación (nombre + PIN) o con un código de invitación tipo `PINO-4821` que da el admin, y en ese momento se elige el PIN. El código deja de valer en cuanto hay PIN. Tras 5 fallos seguidos, la cuenta se bloquea 15 minutos. Si alguien olvida el PIN, el admin le **resetea el acceso** (código nuevo).
-- **El admin puede eliminar personas**: se borran su cuenta, sus listas, sus fotos subidas, sus mensajes y sus avisos.
+- **Quien organiza puede resetear el acceso o eliminar a la gente de sus salas** (se borran su cuenta, sus listas, sus fotos subidas, sus mensajes y sus avisos). Si una persona también está en salas de otro organizador, solo puede hacerlo un admin.
+- **Listas de regalos en borrador**: en una sala de lista de regalos, tu lista solo la ves tú hasta que pulsas «Publicar mi lista». Los demás ven que la estás preparando y, mientras, pueden proponer ideas entre ellos.
 - **Ficha personal**: tallas, colores, "me encanta", "por favor no", alergias.
 - **Lista de deseos**:
   - Cada idea lleva título, prioridad (⭐/👍/🤷), precio aproximado, detalles, hasta 5 enlaces de compra con vista previa automática (foto, título y precio) y foto propia.
@@ -47,7 +49,7 @@ src/components/           UI (escenario, sobre, formularios, panel admin…)
 prisma/                   esquema y migraciones
 tests/                    tests unitarios y de integración (BD real)
 e2e/flow.py               recorrido completo con Playwright
-scripts/admin-cli.ts      rescate: listar usuarios, resetear acceso (borra PIN, da código nuevo), hacer admin
+scripts/admin-cli.ts      rescate: listar usuarios, resetear acceso (borra PIN, da código nuevo), roles, ceder salas
 ```
 
 ## Puesta en marcha (Docker)
@@ -155,6 +157,9 @@ CLI para cuando alguien se queda fuera. Necesita `DATABASE_URL` hacia la BD (con
 npm run admin -- list
 npm run admin -- reset-code "Maite"      # borra su PIN y le da un código nuevo
 npm run admin -- make-admin "Maite"
+npm run admin -- set-role "Maite" ORGANIZER   # USER | ORGANIZER | ADMIN
+npm run admin -- games                   # salas y quién lleva cada una
+npm run admin -- set-owner <id de sala> "Maite"   # ceder una sala a otro organizador
 ```
 
 ## Licencia

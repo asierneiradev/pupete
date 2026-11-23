@@ -5,11 +5,10 @@ import { revalidatePath } from "next/cache";
 import { runAction, type ActionResult } from "@/lib/errors";
 import { rateLimit } from "@/lib/rate-limit";
 import {
-  loginWithCode, loginWithPin, regenerateLoginCode, setAccess, setUserRole, setupFirstAdmin, updateProfile,
+  loginWithCode, loginWithPin, setAccess, setUserRole, setupFirstAdmin, updateProfile,
 } from "@/lib/services/auth";
-import { deleteUserByAdmin } from "@/lib/services/users";
-import { db } from "@/lib/db";
-import { clientIp, endSession, getCurrentUser, requireAdmin, requireUser, safeNext, startSession } from "@/lib/session";
+import { deleteUserByAdmin, resetUserAccess } from "@/lib/services/users";
+import { clientIp, endSession, getCurrentUser, requireAdmin, requireOrganizer, requireUser, safeNext, startSession } from "@/lib/session";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "");
 
@@ -85,28 +84,24 @@ export async function updateProfileAction(_: unknown, fd: FormData): Promise<Act
   return r.ok ? { ok: true, message: r.message } : r;
 }
 
-export async function setRoleAction(userId: string, role: "USER" | "ADMIN"): Promise<ActionResult> {
+export async function setRoleAction(userId: string, role: "USER" | "ORGANIZER" | "ADMIN"): Promise<ActionResult> {
   const admin = await requireAdmin();
   const r = await runAction(() => setUserRole(admin, userId, role));
-  revalidatePath("/admin/usuarios");
+  revalidatePath("/", "layout");
   return r.ok ? { ok: true } : r;
 }
 
 /** Resetear acceso: borra el PIN, cierra sesiones y da un código de invitación nuevo. */
 export async function regenerateUserCodeAction(userId: string): Promise<ActionResult<string>> {
-  const admin = await requireAdmin();
-  const target = await db.user.findUnique({ where: { id: userId } });
-  if (!target) return { ok: false, error: "No existe." };
-  if (target.id === admin.id) return { ok: false, error: "Tu propio PIN lo cambias desde tu perfil." };
-  if (target.role === "ADMIN") return { ok: false, error: "No puedes resetear el acceso de otro admin." };
-  const code = await regenerateLoginCode(userId);
+  const actor = await requireOrganizer();
+  const r = await runAction(() => resetUserAccess(actor, userId));
   revalidatePath("/", "layout");
-  return { ok: true, data: code, message: `Nuevo código de invitación: ${code}` };
+  return r.ok ? { ok: true, data: r.data, message: `Nuevo código de invitación: ${r.data}` } : r;
 }
 
 export async function deleteUserAction(userId: string): Promise<ActionResult> {
-  const admin = await requireAdmin();
-  const r = await runAction(() => deleteUserByAdmin(admin, userId), "Persona eliminada con todos sus datos.");
+  const actor = await requireOrganizer();
+  const r = await runAction(() => deleteUserByAdmin(actor, userId), "Persona eliminada con todos sus datos.");
   revalidatePath("/", "layout");
   return r.ok ? { ok: true, message: r.message } : r;
 }

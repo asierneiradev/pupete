@@ -11,11 +11,11 @@ import { saveUpload } from "@/lib/uploads";
 import { markRevealed } from "@/lib/services/drawing";
 import { notifyNewChatMessage, sendChatMessage } from "@/lib/services/chat";
 import {
-  addWish, copyWishesFrom, deleteWish, setSurprisePurchased, setWantsSurprise, setWishPurchased, updateWish, type WishInput,
+  addWish, copyWishesFrom, deleteWish, publishMyList, setSurprisePurchased, setWantsSurprise, setWishPurchased, updateWish, type WishInput,
 } from "@/lib/services/wishes";
 
 import { addSecretWish, claimWish, deleteSecretWish, setClaimAmount, setClaimPurchased, unclaimWish, updateSecretWish } from "@/lib/services/giftlist";
-import { notifyJointJoined, notifySecretIdea, notifyWishAdded } from "@/lib/services/giftnotify";
+import { notifyJointJoined, notifyListPublished, notifySecretIdea, notifyWishAdded } from "@/lib/services/giftnotify";
 
 /** Los avisos push salen después de responder, sin hacer esperar a quien pulsa. */
 function pushLater(fn: () => Promise<unknown>) {
@@ -53,6 +53,16 @@ export async function saveWishAction(gameId: string, wishId: string | null, _: u
   revalidatePath(`/sala/${gameId}`);
   const addedId = r.ok && !wishId ? r.data?.id : undefined;
   if (addedId) pushLater(() => notifyWishAdded(addedId));
+  return r.ok ? { ok: true, message: r.message } : r;
+}
+
+/** Lista de regalos: mi lista deja de ser un borrador y la ve el resto de la sala. */
+export async function publishListAction(gameId: string): Promise<ActionResult> {
+  const user = await requireUser();
+  const r = await runAction(() => publishMyList(user, gameId), "¡Lista publicada! 🎉 Los demás ya la ven.");
+  revalidatePath(`/sala/${gameId}`);
+  const published = r.ok && r.data?.published ? r.data.participantId : undefined;
+  if (published) pushLater(() => notifyListPublished(published));
   return r.ok ? { ok: true, message: r.message } : r;
 }
 

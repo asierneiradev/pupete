@@ -7,7 +7,7 @@ import { addWish, copyWishesFrom, deleteWish, listMyWishes, myListState, updateW
 import {
   addSecretWish, claimWish, deleteSecretWish, getGiftLists, myClaims, setClaimPurchased, unclaimWish, updateSecretWish,
 } from "@/lib/services/giftlist";
-import { gameInput, gameWith, makeAdmin, makeUser, noPreview, userById } from "./helpers";
+import { gameInput, gameWith, makeAdmin, makeUser, noPreview, publishAll, userById } from "./helpers";
 
 /** Cumple de Miriam: ella recibe; Ane, Beñat y Carla regalan. El admin solo organiza. */
 async function setup() {
@@ -15,6 +15,7 @@ async function setup() {
   const { game, people } = await gameWith(admin, [{ name: "Miriam" }, { name: "Ane" }, { name: "Beñat" }, { name: "Carla" }], { kind: "GIFT_LIST", name: "Cumple de Miriam" });
   const [miriam, ane, benat, carla] = await Promise.all(people.map((p) => userById(p.userId)));
   await setHonoree(admin, game.id, people[0].participantId, true);
+  await publishAll(game.id);
   return { admin, game, people, miriam, ane, benat, carla, miriamPid: people[0].participantId };
 }
 
@@ -229,6 +230,7 @@ describe("lista de regalos · quien recibe no se entera de nada", () => {
     await joinGame(ane, game.joinToken);
     const me = await db.participant.findFirstOrThrow({ where: { gameId: game.id, userId: admin.id } });
     expect(me.honoree).toBe(true);
+    await publishAll(game.id);
     const w = await addWish(admin, game.id, { title: "Libro" }, noPreview);
     const secret = await addSecretWish(ane, game.id, me.id, { title: "Sorpresa" }, noPreview);
     await claimWish(ane, w.id, false);

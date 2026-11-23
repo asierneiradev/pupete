@@ -84,8 +84,17 @@ function cleanCoverImage(value: string | null | undefined): string | null | unde
   return value;
 }
 
-export function canManage(user: Pick<User, "id" | "role">, game: Pick<Game, "ownerId">): boolean {
-  return user.role === "ADMIN" || game.ownerId === user.id;
+/** Puede crear salas: organizadores y admins. */
+export function canOrganize(user: Pick<User, "role">): boolean {
+  return user.role === "ADMIN" || user.role === "ORGANIZER";
+}
+
+/**
+ * Cada sala la gestiona solo quien la creó. Ser admin no da acceso a las salas
+ * de otro organizador: cada uno ve y lleva únicamente las suyas.
+ */
+export function canManage(user: Pick<User, "id">, game: Pick<Game, "ownerId">): boolean {
+  return game.ownerId === user.id;
 }
 
 export async function getManagedGame(user: User, gameId: string): Promise<Game> {
@@ -99,7 +108,7 @@ export async function createGame(
   owner: User,
   input: GameInput & { joinAsParticipant?: boolean; ownerGroup?: "ADULT" | "CHILD"; ownerIsHonoree?: boolean },
 ): Promise<Game> {
-  if (owner.role !== "ADMIN") throw new AppError("Solo un administrador puede crear salas.");
+  if (!canOrganize(owner)) throw new AppError("Solo un administrador u organizador puede crear salas.");
   const data = validate(input);
   return db.game.create({
     data: {
@@ -238,12 +247,10 @@ export async function listGamesForUser(user: User) {
     include: { _count: { select: { participants: true } } },
     orderBy: [{ eventDate: "asc" }, { createdAt: "desc" }],
   });
-  const managed =
-    user.role === "ADMIN"
-      ? await db.game.findMany({
-          include: { _count: { select: { participants: true } } },
-          orderBy: { createdAt: "desc" },
-        })
-      : [];
+  const managed = await db.game.findMany({
+    where: { ownerId: user.id },
+    include: { _count: { select: { participants: true } } },
+    orderBy: { createdAt: "desc" },
+  });
   return { participating, managed };
 }

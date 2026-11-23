@@ -4,6 +4,9 @@
  * Quien recibe (honoree) tiene su lista. Los demás la ven, se piden qué regalan
  * ("yo lo regalo", solos o entre varios) y pueden proponer ideas secretas.
  *
+ * La lista de cada uno nace como borrador (`Participant.listPublishedAt` a null):
+ * hasta que su dueño la publica, los demás no ven sus ideas ni pueden pedírselas.
+ *
  * Regla de oro: NADIE ve, sobre su propia lista, ni quién se ha pedido qué, ni
  * qué está comprado, ni las ideas secretas. Todo lo que devuelve este fichero
  * excluye la lista de quien pregunta.
@@ -77,7 +80,9 @@ export async function getGiftLists(user: User, gameId: string) {
         dislikes: u.dislikes,
         allergies: u.allergies,
       },
-      wishes: h.wishes.map((w) => {
+      /** false = su lista sigue en borrador: solo se ven las ideas propuestas por otros */
+      published: Boolean(h.listPublishedAt),
+      wishes: h.wishes.filter((w) => w.secret || h.listPublishedAt).map((w) => {
         const mine = me ? w.claims.some((c) => c.participantId === me.id) : false;
         return {
           id: w.id,
@@ -140,6 +145,8 @@ async function othersWish(user: User, wishId: string) {
   if (!wish || wish.participant.game.kind !== "GIFT_LIST") throw new AppError("Ese regalo no existe.");
   // Mismo mensaje que si no existiera: no confirmar ideas secretas a su dueño
   if (wish.participant.userId === user.id) throw new AppError("Ese regalo no existe.");
+  // Lista en borrador: sus ideas propias todavía no existen para nadie más
+  if (!wish.secret && !wish.participant.listPublishedAt) throw new AppError("Ese regalo no existe.");
   const game = wish.participant.game;
   const me = await participantOf(user.id, game.id);
   const manager = canManage(user, game);

@@ -29,6 +29,13 @@ export async function requireAdmin(): Promise<User> {
   return user;
 }
 
+/** Organizadores y admins: quienes pueden crear salas y llevar a su gente. */
+export async function requireOrganizer(): Promise<User> {
+  const user = await requireUser();
+  if (user.role === "USER") redirect("/");
+  return user;
+}
+
 export async function startSession(userId: string): Promise<void> {
   const token = await createSession(userId);
   const store = await cookies();

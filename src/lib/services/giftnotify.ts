@@ -37,12 +37,33 @@ export async function notifyWishAdded(wishId: string, now = Date.now()): Promise
   if (!wish || wish.secret) return 0;
   const p = wish.participant;
   if (p.game.kind !== "GIFT_LIST" || p.game.status !== "OPEN" || !p.honoree) return 0;
+  // Lista en borrador: nadie más la ve todavía, así que no se avisa
+  if (!p.listPublishedAt) return 0;
   const last = lastListNotice.get(p.id) ?? 0;
   if (now - last < LIST_THROTTLE_MS) return 0;
   lastListNotice.set(p.id, now);
   return notifyUsers(await participantUserIds(p.gameId, [p.user.id]), {
     title: `🎁 ${first(p.user.name)} ha añadido cosas a su lista`,
     body: `«${short(wish.title)}» · ${p.game.name}`,
+    url: `/sala/${p.gameId}?zona=regalo&de=${p.id}`,
+    tag: `lista-${p.id}`,
+  });
+}
+
+/** Quien recibe publica su lista (deja de ser borrador) → aviso a los demás de la sala. */
+export async function notifyListPublished(participantId: string, now = Date.now()): Promise<number> {
+  const p = await db.participant.findUnique({
+    where: { id: participantId },
+    include: { game: true, user: { select: { id: true, name: true } }, _count: { select: { wishes: { where: { secret: false } } } } },
+  });
+  if (!p || !p.honoree || !p.listPublishedAt) return 0;
+  if (p.game.kind !== "GIFT_LIST" || p.game.status !== "OPEN") return 0;
+  // Lo que añada justo después no vuelve a avisar hasta pasada la media hora
+  lastListNotice.set(p.id, now);
+  const n = p._count.wishes;
+  return notifyUsers(await participantUserIds(p.gameId, [p.user.id]), {
+    title: `🎁 ${first(p.user.name)} ha publicado su lista`,
+    body: `${n} idea${n === 1 ? "" : "s"} · ${p.game.name}`,
     url: `/sala/${p.gameId}?zona=regalo&de=${p.id}`,
     tag: `lista-${p.id}`,
   });
@@ -167,13 +188,15 @@ async function remindGame(gameId: string, gameName: string, daysLeft: number): P
     // Regalos sin pedir en las listas de los DEMÁS (nunca en la mía)
     const unclaimed = participants
       .filter((o) => o.id !== p.id && o.honoree)
-      .reduce((n, o) => n + o.wishes.filter((w) => w._count.claims === 0).length, 0);
+      // Las ideas de una lista en borrador aún no se ven: no cuentan
+      .reduce((n, o) => n + o.wishes.filter((w) => w._count.claims === 0 && (w.secret || o.listPublishedAt)).length, 0);
     const toBuy = p.claims.filter((c) => !c.wish.purchased).length;
     const emptyOwnList = p.honoree && p.wishes.every((w) => w.secret);
     const lines: string[] = [];
     if (unclaimed > 0) lines.push(unclaimed === 1 ? "Hay 1 regalo sin pedir." : `Hay ${unclaimed} regalos sin pedir.`);
     if (toBuy > 0) lines.push(toBuy === 1 ? "Te queda 1 por comprar." : `Te quedan ${toBuy} por comprar.`);
     if (emptyOwnList) lines.push("Tu lista está vacía: apunta alguna idea para que sepan qué regalarte.");
+    else if (p.honoree && !p.listPublishedAt) lines.push("Tu lista sigue en borrador: publícala para que los demás la vean.");
     if (lines.length === 0) continue;
     sent += await notifyUsers([p.userId], {
       title: `⏰ ${when} · ${gameName}`,

@@ -55,6 +55,7 @@ export default async function Home() {
   const { participating, managed } = await listGamesForUser(user);
   const participatingIds = new Set(participating.map((g) => g.id));
   const onlyManaged = managed.filter((g) => !participatingIds.has(g.id));
+  const organizer = user.role !== "USER";
   const hour = Number(new Intl.DateTimeFormat("es-ES", { hour: "numeric", hour12: false, timeZone: process.env.APP_TIMEZONE || "Europe/Madrid" }).format(new Date()));
   const greeting = hour < 7 ? "Buenas noches" : hour < 14 ? "Buenos días" : hour < 21 ? "Buenas tardes" : "Buenas noches";
 
@@ -67,7 +68,7 @@ export default async function Home() {
             {user.name.split(" ")[0].toUpperCase()} <span className="not-italic">{user.avatar}</span>
           </h1>
         </div>
-        {user.role === "ADMIN" && (
+        {organizer && (
           <Link href="/admin/nueva" className="btn">+ Nueva sala</Link>
         )}
       </section>
@@ -79,7 +80,7 @@ export default async function Home() {
             <Lantern size={30} />
             <p className="text-ink-soft">
               Todavía no estás en ninguna sala. Cuando te inviten, aparecerá aquí.
-              {user.role === "ADMIN" && " Como admin, puedes crear la primera."}
+              {organizer && " Como organizas salas, puedes crear la primera."}
             </p>
           </div>
         ) : (
@@ -93,14 +94,16 @@ export default async function Home() {
         )}
       </section>
 
-      {user.role === "ADMIN" && (
+      {(organizer || managed.length > 0) && (
         <section className="mt-12">
           <div className="flex items-center justify-between">
             <h2 className="dot-label">Salas que organizo</h2>
-            <Link href="/admin/usuarios" className="link text-sm">Personas y admins</Link>
+            {organizer && (
+              <Link href="/admin/usuarios" className="link text-sm">{user.role === "ADMIN" ? "Personas y permisos" : "Personas de mis salas"}</Link>
+            )}
           </div>
           {managed.length === 0 ? (
-            <p className="mt-4 text-ink-soft">Aún no hay salas creadas.</p>
+            <p className="mt-4 text-ink-soft">Aún no has creado ninguna sala.</p>
           ) : (
             <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {[...participating.filter((g) => managed.some((m) => m.id === g.id)), ...onlyManaged].map((g) => (

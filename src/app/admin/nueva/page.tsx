@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import { requireAdmin } from "@/lib/session";
+import { requireOrganizer } from "@/lib/session";
 import { GameForm } from "@/components/GameForm";
 import { createGameAction } from "@/app/actions/games";
 
 export const metadata: Metadata = { title: "Nueva sala" };
 
 export default async function NuevaSalaPage() {
-  await requireAdmin();
+  await requireOrganizer();
   return (
     <div className="mx-auto max-w-3xl">
       <p className="dot-label rise">Nueva sala</p>

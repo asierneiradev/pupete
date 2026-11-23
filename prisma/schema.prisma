@@ -12,8 +12,12 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// USER: participa en salas. ORGANIZER: además crea y gestiona SUS salas.
+// ADMIN: organizador que además reparte permisos y administra la instalación.
+// Cada sala la gestiona solo su dueño (ownerId), también entre admins.
 enum Role {
   USER
+  ORGANIZER
   ADMIN
 }
 
@@ -155,6 +159,9 @@ model Participant {
   wantsSurprise     Boolean   @default(false)
   // Solo GIFT_LIST: esta persona recibe regalos (tiene lista que los demás ven)
   honoree           Boolean   @default(false)
+  // Solo GIFT_LIST: cuándo publicó su lista. Mientras sea null es un borrador
+  // que solo ve su dueño (los demás solo ven las ideas secretas que propongan).
+  listPublishedAt   DateTime?
 
   wishes      Wish[]
   claims      WishClaim[]

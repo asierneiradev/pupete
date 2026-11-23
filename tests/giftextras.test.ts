@@ -9,7 +9,7 @@ import { addSecretWish, claimWish, getGiftLists, getThanks, myClaims, setClaimAm
 import {
   notifyJointJoined, notifySecretIdea, notifyThanksReady, notifyWishAdded, resetGiftNotifyThrottle, sendDueReminders,
 } from "@/lib/services/giftnotify";
-import { gameInput, gameWith, makeAdmin, noPreview, userById } from "./helpers";
+import { gameInput, gameWith, makeAdmin, noPreview, publishAll, userById } from "./helpers";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -42,6 +42,7 @@ async function setup(over: Parameters<typeof gameInput>[0] = {}) {
   });
   const [miriam, ane, benat, carla] = await Promise.all(people.map((p) => userById(p.userId)));
   await setHonoree(admin, game.id, people[0].participantId, true);
+  await publishAll(game.id);
   for (const [u, key] of [[miriam, "miriam"], [ane, "ane"], [benat, "benat"], [carla, "carla"]] as const) {
     await saveSubscription(u, { endpoint: `https://push.test/${key}`, keys: { p256dh: "p", auth: "a" } });
   }
@@ -260,6 +261,7 @@ describe("recordatorios", () => {
     const [ane, benat] = await Promise.all(people.map((p) => userById(p.userId)));
     await saveSubscription(ane, { endpoint: "https://push.test/ane", keys: { p256dh: "p", auth: "a" } });
     await saveSubscription(benat, { endpoint: "https://push.test/benat", keys: { p256dh: "p", auth: "a" } });
+    await publishAll(game.id);
     await addWish(ane, game.id, { title: "A1" }, noPreview);
     await addWish(ane, game.id, { title: "A2" }, noPreview);
     await addWish(benat, game.id, { title: "B1" }, noPreview);

@@ -156,6 +156,22 @@ export async function setWantsSurprise(user: User, gameId: string, value: boolea
   await db.participant.update({ where: { id: p.id }, data: { wantsSurprise: value } });
 }
 
+/**
+ * Lista de regalos: mi lista nace como borrador (solo la veo yo) y la publico
+ * cuando la tengo lista. No se puede volver atrás: en cuanto es visible, otros
+ * pueden pedirse regalos y ocultarla delataría si alguien lo ha hecho.
+ */
+export async function publishMyList(user: User, gameId: string): Promise<{ participantId: string; published: boolean }> {
+  const p = await participantFor(user.id, gameId);
+  if (p.game.kind !== "GIFT_LIST" || !p.honoree) throw new AppError("En esta sala no tienes lista propia.");
+  if (p.listPublishedAt) return { participantId: p.id, published: false };
+  if ((await db.wish.count({ where: { participantId: p.id, secret: false } })) === 0) {
+    throw new AppError("Añade al menos una idea antes de publicar tu lista.");
+  }
+  await db.participant.update({ where: { id: p.id }, data: { listPublishedAt: new Date() } });
+  return { participantId: p.id, published: true };
+}
+
 /** Estado de mi lista en una sala (para el aviso de lista vacía). */
 export async function myListState(user: User, gameId: string) {
   const p = await db.participant.findUnique({

@@ -19,6 +19,8 @@ export interface AdminParticipant {
   group: "ADULT" | "CHILD";
   /** Solo lista de regalos: recibe regalos */
   honoree: boolean;
+  /** Solo lista de regalos: su lista sigue en borrador */
+  listDraft: boolean;
   wishCount: number;
   emptyList: boolean;
   revealed: boolean;
@@ -72,7 +74,7 @@ export function ParticipantsTable({
               <p className="font-semibold leading-tight">{p.name}</p>
               <p className="text-xs text-ink-faint">
                 {giftList ? (
-                  p.honoree ? `${p.wishCount} idea${p.wishCount === 1 ? "" : "s"} en su lista` : "Regala"
+                  p.honoree ? (p.listDraft ? "Está preparando su lista" : `${p.wishCount} idea${p.wishCount === 1 ? "" : "s"} en su lista`) : "Regala"
                 ) : (
                   <>
                     {p.wishCount} idea{p.wishCount === 1 ? "" : "s"}
@@ -82,6 +84,7 @@ export function ParticipantsTable({
               </p>
               <div className="mt-1 flex flex-wrap gap-1.5">
                 {giftList && p.honoree && <span className="chip chip-red">🎁 Recibe regalos</span>}
+                {giftList && p.honoree && p.listDraft && <span className="chip chip-ochre" title="Todavía no ha publicado su lista: solo la ve ella">🔒 Lista en borrador</span>}
                 {p.hasPin ? <span className="chip chip-moss">🔐 PIN creado</span> : <span className="chip chip-sky">⏳ Sin PIN</span>}
                 {p.pushOn ? <span className="chip" title="Tiene los avisos activados en algún dispositivo">🔔 Avisos</span> : <span className="chip text-ink-faint" title="No ha activado los avisos">🔕 Sin avisos</span>}
                 {!giftList && p.emptyList && <span className="chip chip-red">⚠️ Lista vacía</span>}

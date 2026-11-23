@@ -44,14 +44,17 @@ export async function addParticipantByAdmin(
   let userId: string;
   let code: string | undefined;
   if (input.existingUserId) {
-    const u = await db.user.findUnique({ where: { id: input.existingUserId } });
+    // Solo gente de mis propias salas (o yo): no se "pesca" a personas de otro organizador
+    const u = await db.user.findFirst({
+      where: { id: input.existingUserId, OR: [{ id: actor.id }, { participants: { some: { game: { ownerId: actor.id } } } }] },
+    });
     if (!u) throw new AppError("Esa persona no existe.");
     userId = u.id;
   } else {
     const same = await db.user.findUnique({ where: { nameKey: nameKey(input.name) }, select: { name: true } });
     if (same) {
       throw new AppError(
-        `Ya hay alguien en Pupete que se llama «${same.name}». Si es la misma persona, elígela en la pestaña «De otras salas». Si no, añade el apellido o una inicial.`,
+        `Ya hay alguien en Pupete que se llama «${same.name}». Si es la misma persona y ya ha estado en alguna sala tuya, elígela en la pestaña «De otras salas»; si no la ves ahí, pásale el enlace de invitación y entrará con su nombre y su PIN. Si es otra persona, añade el apellido o una inicial.`,
       );
     }
     const created = await createUser({ name: input.name ?? "" });
@@ -166,7 +169,7 @@ export async function setHonoree(actor: User, gameId: string, participantId: str
   });
 }
 
-/** Lista para el panel del admin, con códigos visibles (salvo de otros admins). */
+/** Lista para el panel de quien organiza, con códigos visibles (salvo de otros organizadores o admins). */
 export async function listParticipantsForAdmin(actor: User, gameId: string) {
   const game = await getManagedGame(actor, gameId);
   const rows = await db.participant.findMany({
@@ -185,6 +188,8 @@ export async function listParticipantsForAdmin(actor: User, gameId: string) {
     avatar: p.user.avatar,
     group: p.group,
     honoree: p.honoree,
+    /** Lista de regalos: su lista sigue en borrador (solo la ve su dueño) */
+    listDraft: p.honoree && !p.listPublishedAt,
     wishCount: p._count.wishes,
     wantsSurprise: p.wantsSurprise,
     emptyList: !p.wantsSurprise && p._count.wishes === 0,
@@ -193,15 +198,18 @@ export async function listParticipantsForAdmin(actor: User, gameId: string) {
     /** Tiene los avisos activados en algún dispositivo */
     pushOn: p.user._count.pushSubs > 0,
     // El código de invitación solo se muestra mientras no haya creado su PIN
-    code: p.user.pinHash || (p.user.role === "ADMIN" && p.user.id !== actor.id) ? null : revealLoginCode(p.user),
+    code: p.user.pinHash || (p.user.role !== "USER" && p.user.id !== actor.id) ? null : revealLoginCode(p.user),
   }));
 }
 
-/** Personas de otras salas que se pueden reutilizar. */
+/** Personas de MIS otras salas (y yo) que se pueden reutilizar. Nunca gente de otro organizador. */
 export async function listReusableUsers(actor: User, gameId: string) {
   const game = await getManagedGame(actor, gameId);
   return db.user.findMany({
-    where: { participants: { none: { gameId: game.id } } },
+    where: {
+      participants: { none: { gameId: game.id } },
+      OR: [{ id: actor.id }, { participants: { some: { game: { ownerId: actor.id } } } }],
+    },
     select: { id: true, name: true, avatar: true },
     orderBy: { name: "asc" },
     take: 300,

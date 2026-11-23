@@ -23,8 +23,9 @@ describe("modo 2 · el admin crea a todos y reparte códigos", () => {
 
   it("reutiliza una cuenta existente (otra edición) sin generar código nuevo", async () => {
     const admin = await makeAdmin();
+    const before = await gameWith(admin, [{ name: "Abuelo" }], { name: "Navidad 2025" });
     const g = await createGame(admin, gameInput());
-    const existing = await makeUser("Abuelo");
+    const existing = await db.user.findUniqueOrThrow({ where: { id: before.people[0].userId } });
     const reusable = await listReusableUsers(admin, g.id);
     expect(reusable.map((u) => u.id)).toContain(existing.id);
     const r = await addParticipantByAdmin(admin, g.id, { existingUserId: existing.id });
@@ -62,7 +63,7 @@ describe("modo 2 · el admin crea a todos y reparte códigos", () => {
     const otherAdmin = await makeAdmin("Otro admin");
     const g = await createGame(admin, { ...gameInput(), joinAsParticipant: true });
     const r = await addParticipantByAdmin(admin, g.id, { name: "Niño" });
-    await addParticipantByAdmin(admin, g.id, { existingUserId: otherAdmin.id });
+    await joinGame(otherAdmin, g.joinToken);
     const list = await listParticipantsForAdmin(admin, g.id);
     expect(list.find((p) => p.userId === r.userId)!.code).toBe(r.code);
     expect(list.find((p) => p.userId === admin.id)!.code).toMatch(/-/);

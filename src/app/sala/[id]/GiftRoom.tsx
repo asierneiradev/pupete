@@ -13,7 +13,7 @@ import { MyWishList, type Budget } from "@/components/wishes";
 import { GiftWishList } from "@/components/giftlist";
 import { ActionButton } from "@/components/forms";
 import { statusOf } from "@/components/GameCard";
-import { copyWishesAction } from "@/app/actions/wishes";
+import { copyWishesAction, publishListAction } from "@/app/actions/wishes";
 import { leaveGameAction } from "@/app/actions/games";
 
 type RoomGame = Game & { participants: Array<Participant & { user: { name: string; avatar: string } }> };
@@ -61,6 +61,8 @@ export async function GiftRoom({
   const lists = await getGiftLists(user, game.id);
   const claims = me ? await myClaims(user, game.id) : [];
   const myWishes = iReceive ? await listMyWishes(user, game.id) : [];
+  // Mi lista nace como borrador: nadie más la ve hasta que la publico
+  const myDraft = iReceive && active && !me?.listPublishedAt;
   const anyHonoree = game.participants.some((p) => p.honoree);
   // Agradecimientos: solo con la sala cerrada, pasada la fecha y si se activó al cerrar
   const thanks = iReceive ? await getThanks(user, game.id) : null;
@@ -157,6 +159,13 @@ export async function GiftRoom({
         </p>
       )}
 
+      {myDraft && zona === "regalo" && myWishes.length > 0 && (
+        <p className="notice notice-warn" role="alert">
+          🔒 <b>Tu lista sigue en borrador</b>: de momento solo la ves tú.{" "}
+          <Link className="link" href={`/sala/${game.id}?zona=mia`} scroll={false}>Publícala cuando la tengas</Link>.
+        </p>
+      )}
+
       {/* Selector de zona: solo si recibo y además hay otras listas */}
       {iReceive && canGive && (
         <nav className="zone-tabs rise rise-2" aria-label="Zonas de la sala">
@@ -166,7 +175,9 @@ export async function GiftRoom({
           </Link>
           <Link href={`/sala/${game.id}?zona=mia`} scroll={false} className="zone-tab zone-tab-mine" aria-current={zona === "mia" ? "page" : undefined}>
             <small>Lo que yo pido</small>
-            <span className="text-lg">{user.avatar} Mi lista</span>
+            <span className="text-lg">
+              {user.avatar} Mi lista{myDraft && <span aria-label=" (borrador)" title="Borrador: solo la ves tú"> 🔒</span>}
+            </span>
           </Link>
         </nav>
       )}
@@ -199,6 +210,12 @@ export async function GiftRoom({
               </div>
             </div>
             <div className="zone-body">
+              {!selected.published && active && (
+                <p className="notice notice-info">
+                  ✏️ <b>{first(selected.name)} todavía está preparando su lista.</b> Cuando la publique la verás aquí. Mientras tanto podéis
+                  proponer ideas entre vosotros: {first(selected.name)} no las verá.
+                </p>
+              )}
               <p className="story text-lg text-ink-soft">
                 Pídete lo que vayas a regalar para que nadie repita. {first(selected.name)} no ve quién se pide cada cosa, ni qué está comprado, ni las
                 ideas que propongáis 🤫 Cuando pase la celebración, quien organiza puede enseñarle quién le regaló cada cosa para que dé las gracias.
@@ -309,6 +326,31 @@ export async function GiftRoom({
                   </>
                 )}
               </div>
+            )}
+            {myDraft && (
+              <div className="rounded-3xl border-2 border-dashed border-ochre bg-ochre-soft/60 p-4 sm:p-5">
+                <h3 className="text-xl font-bold">🔒 Borrador · solo la ves tú</h3>
+                <p className="mt-1 text-ink-soft">
+                  Prepara tu lista con calma: nadie más la ve todavía.{" "}
+                  {myWishes.length > 0
+                    ? "Cuando la tengas, publícala para que el resto de la sala pueda verla. Después podrás seguir añadiendo y cambiando cosas."
+                    : "Añade tu primera idea y después podrás publicarla para el resto de la sala."}
+                </p>
+                {myWishes.length > 0 && (
+                  <div className="mt-3">
+                    <ActionButton
+                      action={publishListAction.bind(null, game.id)}
+                      confirm="¿Publicar tu lista? El resto de la sala la verá y podrá pedirse los regalos. Ya no se puede volver a ocultar, pero podrás seguir añadiendo y cambiando ideas."
+                      className="btn"
+                    >
+                      📣 Publicar mi lista
+                    </ActionButton>
+                  </div>
+                )}
+              </div>
+            )}
+            {iReceive && active && !myDraft && (
+              <p className="chip chip-moss self-start">✅ Lista publicada · el resto de la sala ya la ve</p>
             )}
             {active && (
               <p className="text-ink-soft">

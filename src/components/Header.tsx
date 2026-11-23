@@ -11,7 +11,7 @@ export async function Header() {
       <nav className="flex items-center gap-2">
         {user ? (
           <>
-            {user.role === "ADMIN" && (
+            {user.role !== "USER" && (
               <Link href="/admin/nueva" className="btn btn-sm hidden sm:inline-flex">
                 + Nueva sala
               </Link>

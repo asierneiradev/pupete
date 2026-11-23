@@ -39,6 +39,14 @@ export async function gameWith(admin: User, people: Array<{ name: string; group?
   return { game, people: created };
 }
 
+/**
+ * Deja publicadas las listas de la sala, como en las salas anteriores a los
+ * borradores. Los tests que no van de borradores parten de listas ya visibles.
+ */
+export async function publishAll(gameId: string) {
+  await db.participant.updateMany({ where: { gameId }, data: { listPublishedAt: new Date() } });
+}
+
 export async function userById(id: string) {
   return db.user.findUniqueOrThrow({ where: { id } });
 }

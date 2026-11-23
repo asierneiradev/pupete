@@ -57,7 +57,7 @@ async function freshCode(): Promise<{ code: string; loginCodeHash: string; login
 
 export async function createUser(input: {
   name: string;
-  role?: "USER" | "ADMIN";
+  role?: "USER" | "ORGANIZER" | "ADMIN";
   avatar?: string;
   /** Si se da, la cuenta queda ya activada (nombre + PIN). */
   pin?: string;
@@ -287,8 +287,9 @@ export async function updateProfile(userId: string, input: ProfileInput): Promis
   });
 }
 
-export async function setUserRole(actor: User, userId: string, role: "USER" | "ADMIN"): Promise<void> {
+export async function setUserRole(actor: User, userId: string, role: "USER" | "ORGANIZER" | "ADMIN"): Promise<void> {
   if (actor.role !== "ADMIN") throw new AppError("Solo un administrador puede hacer esto.");
+  if (!["USER", "ORGANIZER", "ADMIN"].includes(role)) throw new AppError("Ese rol no existe.");
   if (actor.id === userId && role !== "ADMIN") throw new AppError("No puedes quitarte el rol de admin a ti mismo.");
   await db.user.update({ where: { id: userId }, data: { role } });
 }
